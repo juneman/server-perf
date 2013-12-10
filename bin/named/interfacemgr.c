@@ -271,8 +271,6 @@ ns_interface_listenudp(ns_interface_t *ifp) {
 	attrmask |= DNS_DISPATCHATTR_IPV4 | DNS_DISPATCHATTR_IPV6;
 
 	ifp->nudpdispatch = ISC_MIN(ns_g_udpdisp, MAX_UDP_DISPATCH);
-  printf("ifp->nudpdispatch:%d\n", ifp->nudpdispatch);
-  fflush(stdout);
 	for (disp = 0; disp < ifp->nudpdispatch; disp++) {
 		result = dns_dispatch_getudp_dup(ifp->mgr->dispatchmgr,
 						 ns_g_socketmgr,
@@ -316,6 +314,7 @@ ns_interface_listenudp(ns_interface_t *ifp) {
 }
 
 // added-by-db : 2013-12-06
+#ifdef IO_USE_NETMAP
 static isc_result_t
 ns_interface_listen_netmap(ns_interface_t *ifp) {
 	isc_result_t result;
@@ -351,18 +350,6 @@ ns_interface_listen_netmap(ns_interface_t *ifp) {
 				      isc_result_totext(result));
 			goto udp_dispatch_failure;
 		}
-        
-        dns_dispatch_t *patch = ifp->udpdispatch[disp];
-
-        if (patch == NULL ) 
-        {
-            printf("OOOOOOOhhhh: ifp->udpdispatch[%d] is null\n", disp);
-        }
-        else {
-            printf("hhhhhaaaaaaaaa, ifp->udpdispatch[%d] is good:%x\n", disp, patch);
-        }
-        fflush(stdout);
-
 	}
 
 	result = ns_clientmgr_createclients(ifp->clientmgr, ifp->nudpdispatch,
@@ -387,6 +374,7 @@ ns_interface_listen_netmap(ns_interface_t *ifp) {
  udp_dispatch_failure:
 	return (result);
 }
+#endif
 
 static isc_result_t
 ns_interface_accepttcp(ns_interface_t *ifp) {
@@ -464,15 +452,23 @@ ns_interface_setup(ns_interfacemgr_t *mgr, isc_sockaddr_t *addr,
 		return (result);
   
   // added-by-db 
+#ifdef IO_USE_NETMAP
+    printf("%s:%s:%d. IO USE NETMAP.\n", __FILE__,__FUNCTION__,__LINE__);
+    fflush(stdout);
     if (strncmp(name, "eth1", 4) != 0) 
     {
         result = ns_interface_listenudp(ifp);
     }
     else
     {
-        //result = ns_interface_listenudp(ifp);
+        printf(" listen netmap on interface:%s\n", name);
+        fflush(stdout);
         result = ns_interface_listen_netmap(ifp);
     }
+#else
+    result = ns_interface_listenudp(ifp);
+#endif
+
 	if (result != ISC_R_SUCCESS)
 		goto cleanup_interface;
 

@@ -442,11 +442,8 @@ exit_check(ns_client_t *client) {
 			if (TCP_CLIENT(client)) {
 				client_accept(client);
 			} else
-      {
-        printf("db:%s:%d:client_udprecv called.\n", __FUNCTION__, __LINE__);
-        fflush(stdout);
-        client_udprecv(client);
-      }
+               client_udprecv(client);
+      
 			client->newstate = NS_CLIENTSTATE_MAX;
 			return (ISC_TRUE);
 		}
@@ -605,14 +602,8 @@ client_start(isc_task_t *task, isc_event_t *event) {
 	INSIST(client->nctls == 1);
 	client->nctls--;
 
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
-
 	if (exit_check(client))
 		return;
-
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
 
 	if (TCP_CLIENT(client)) {
 		client_accept(client);
@@ -1446,10 +1437,8 @@ client_request(isc_task_t *task, isc_event_t *event) {
   
 	if (exit_check(client))
 		goto cleanup;
-	printf("db:%s:%d: exit_check false\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
 
-  client->state = client->newstate = NS_CLIENTSTATE_WORKING;
+    client->state = client->newstate = NS_CLIENTSTATE_WORKING;
 
 	isc_task_getcurrenttime(task, &client->requesttime);
 	client->now = client->requesttime;
@@ -1931,12 +1920,7 @@ client_request(isc_task_t *task, isc_event_t *event) {
 	switch (client->message->opcode) {
 	case dns_opcode_query:
 		CTRACE("query");
-    printf("db:%s:%d: ns_query_start will call\n", __FUNCTION__, __LINE__);
-    fflush(stdout);
 		ns_query_start(client);
-
-    printf("db:%s:%d: ns_query_start called\n", __FUNCTION__, __LINE__);
-    fflush(stdout);
 		break;
 	case dns_opcode_update:
 		CTRACE("update");
@@ -2379,9 +2363,6 @@ client_udprecv(ns_client_t *client) {
 
 	CTRACE("udprecv");
 
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
-
 	r.base = client->recvbuf;
 	r.length = RECV_BUFFER_SIZE;
 	result = isc_socket_recv2(client->udpsocket, &r, 1,
@@ -2597,19 +2578,7 @@ get_client(ns_clientmgr_t *manager, ns_interface_t *ifp,
 
 	if (manager->exiting)
 		return (ISC_R_SHUTTINGDOWN);
- #if 1     
-    if (dns_dispatch_getsocket(disp) == NULL)
-    {
-    printf("get_client, disp->socket: is null\n");
-    }
-    else
-    {
-        printf("get_client, disp->socket is ok.\n");
-    }
-    fflush(stdout);    
-#endif
-     
-    
+
 	/*
 	 * Allocate a client.  First try to get a recycled one;
 	 * if that fails, make a new one.
@@ -2647,28 +2616,8 @@ get_client(ns_clientmgr_t *manager, ns_interface_t *ifp,
 		isc_socket_t *sock;
 
 		dns_dispatch_attach(disp, &client->dispatch);
-        
-        client->dispatch = disp;
-       
 		sock = dns_dispatch_getsocket(client->dispatch);
-#if 1  
-        if (sock == NULL ) 
-        {
-            printf("sock is null \n");
-            fflush(stdout);
-        }
-        else
-        {
-        printf("before: isc_socket_attach called\n");
-        printf("sock-impmagic:%d. sock->magic:%d\n", sock->impmagic, sock->magic);
-        fflush(stdout);
-        }
-#endif
-
 		isc_socket_attach(sock, &client->udpsocket);
-
-        printf("after: isc_socket_attach called.\n");
-        fflush(stdout);
 	}
 
 	INSIST(client->nctls == 0);
@@ -2692,20 +2641,6 @@ ns_clientmgr_createclients(ns_clientmgr_t *manager, unsigned int n,
 	MTRACE("createclients");
 
 	for (disp = 0; disp < n; disp++) {
-        printf("%s:%s: disp:%d:%x\n", __FILE__,__FUNCTION__, disp, ifp->udpdispatch[disp]);
-
- #if 1     
-    if (dns_dispatch_getsocket(ifp->udpdispatch[disp]) == NULL)
-    {
-    printf("%s:%s:%d, disp->socket: is null\n", __FILE__,__FUNCTION__,__LINE__);
-    }
-    else
-    {
-    printf("%s:%s:%d, disp->socket: is ok\n", __FILE__,__FUNCTION__,__LINE__);
-    }
-    fflush(stdout);    
-#endif
-
 		result = get_client(manager, ifp, ifp->udpdispatch[disp], tcp);
 		if (result != ISC_R_SUCCESS)
 			break;

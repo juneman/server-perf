@@ -26,5 +26,6 @@
  * exportable libraries does not.
  */
 #define BIND9 1
+#define IO_USE_NETMAP 1
 
 #endif /* ISC_BIND9_H */

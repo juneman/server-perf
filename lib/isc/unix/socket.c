@@ -76,8 +76,9 @@
 
 #include "errno2result.h"
 
+#ifdef IO_USE_NETMAP
 #include "nm_util.h"
-
+#endif
 
 /* See task.c about the following definition: */
 #ifdef BIND9
@@ -260,7 +261,7 @@ typedef enum { poll_idle, poll_active, poll_checking } pollstate_t;
 
 typedef isc_event_t intev_t;
 
-#define SOCKET_MAGIC		(123456) //ISC_MAGIC('I', 'O', 'i', 'o')
+#define SOCKET_MAGIC		ISC_MAGIC('I', 'O', 'i', 'o')
 #define VALID_SOCKET(s)		ISC_MAGIC_VALID(s, SOCKET_MAGIC)
 
 /*!
@@ -471,10 +472,12 @@ ISC_SOCKETFUNC_SCOPE isc_result_t
 isc__socket_create(isc_socketmgr_t *manager, int pf, isc_sockettype_t type,
 		   isc_socket_t **socketp);
 // added-by-db
+#ifdef IO_USE_NETMAP
 ISC_SOCKETFUNC_SCOPE isc_result_t
 isc__socket_open_netmap(isc_socketmgr_t *manager, 
         int pf, const char *ifname, isc_sockettype_t type,
 		   isc_socket_t **socketp);
+#endif
 
 ISC_SOCKETFUNC_SCOPE void
 isc__socket_attach(isc_socket_t *sock, isc_socket_t **socketp);
@@ -608,7 +611,9 @@ static isc_socketmgrmethods_t socketmgrmethods = {
 	isc__socketmgr_destroy,
 	isc__socket_create,
   //added-by-db
+#ifdef IO_USE_NETMAP
 	isc__socket_open_netmap,
+#endif
 	isc__socket_fdwatchcreate
 };
 
@@ -1660,16 +1665,24 @@ doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	int recv_errno;
 	char strbuf[ISC_STRERRORSIZE];
 
+#ifdef IO_USE_NETMAP 
+    if (sock->type == isc_sockettype_netmap) 
+    {
+        printf("do netmap read buff\n");
+        fflush(stdout);
+        
+	    dev->result = ISC_R_SUCCESS;
+	    return (DOIO_SUCCESS);
+    }
+#endif
+
 	build_msghdr_recv(sock, dev, &msghdr, iov, &read_count);
 
 #if defined(ISC_SOCKET_DEBUG)
 	dump_msg(&msghdr);
 #endif
-	
-  printf("db:%s,%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
 
-  cc = recvmsg(sock->fd, &msghdr, 0);
+    cc = recvmsg(sock->fd, &msghdr, 0);
 	recv_errno = errno;
 
 #if defined(ISC_SOCKET_DEBUG)
@@ -2294,39 +2307,39 @@ opensocket(isc__socketmgr_t *manager, isc__socket_t *sock,
 	int size;
 #endif
 
- again:
-	if (dup_socket == NULL) {
-		switch (sock->type) {
-		case isc_sockettype_udp:
-			sock->fd = socket(sock->pf, SOCK_DGRAM, IPPROTO_UDP);
-            printf("open socket:fd=%d:%s:%s:%d\n", sock->fd, 
-            __FILE__,__FUNCTION__,__LINE__);
-			break;
-		case isc_sockettype_tcp:
-			sock->fd = socket(sock->pf, SOCK_STREAM, IPPROTO_TCP);
-			break;
-		case isc_sockettype_unix:
-			sock->fd = socket(sock->pf, SOCK_STREAM, 0);
-			break;
-		case isc_sockettype_netmap:
-      INSIST(0);
-      printf("handled sockettype_netmap:%s:%s:%d\n", __FILE__,__FUNCTION__,__LINE__);
-      break;
-		case isc_sockettype_fdwatch:
-			/*
-			 * We should not be called for isc_sockettype_fdwatch
-			 * sockets.
-			 */
-			INSIST(0);
-			break;
-		}
-	} else {
-		sock->fd = dup(dup_socket->fd);
-		sock->dupped = 1;
-		sock->bound = dup_socket->bound;
-	}
-	if (sock->fd == -1 && errno == EINTR && tries++ < 42)
-		goto again;
+again:
+    if (dup_socket == NULL) {
+        switch (sock->type) {
+            case isc_sockettype_udp:
+                sock->fd = socket(sock->pf, SOCK_DGRAM, IPPROTO_UDP);
+                break;
+            case isc_sockettype_tcp:
+                sock->fd = socket(sock->pf, SOCK_STREAM, IPPROTO_TCP);
+                break;
+            case isc_sockettype_unix:
+                sock->fd = socket(sock->pf, SOCK_STREAM, 0);
+                break;
+#ifdef IO_USE_NETMAP        
+            case isc_sockettype_netmap:
+                printf("handled sockettype_netmap:%s:%s:%d\n", __FILE__,__FUNCTION__,__LINE__);
+                INSIST(0);
+                break;
+#endif
+            case isc_sockettype_fdwatch:
+                /*
+                 * We should not be called for isc_sockettype_fdwatch
+                 * sockets.
+                 */
+                INSIST(0);
+                break;
+        }
+    } else {
+        sock->fd = dup(dup_socket->fd);
+        sock->dupped = 1;
+        sock->bound = dup_socket->bound;
+    }
+    if (sock->fd == -1 && errno == EINTR && tries++ < 42)
+        goto again;
 
 #ifdef F_DUPFD
 	/*
@@ -2574,6 +2587,7 @@ setup_done:
 }
 
 // added-by-db
+#ifdef IO_USE_NETMAP
 static isc_result_t
 opennetmap(isc__socketmgr_t *manager, isc__socket_t *sock,
 	   isc__socket_t *dup_socket, const char *ifname)
@@ -2590,120 +2604,122 @@ opennetmap(isc__socketmgr_t *manager, isc__socket_t *sock,
 	int size;
 #endif
 
- again:
-	if (dup_socket == NULL) {
-		switch (sock->type) {
-		case isc_sockettype_udp:
-			sock->fd = socket(sock->pf, SOCK_DGRAM, IPPROTO_UDP);
-			break;
-		case isc_sockettype_netmap:
-      {// Hahaaa, call netmap function.....
-        sock->fd = netmap_getfd(ifname);
-        printf("netmap_open:fd=%d:%s---%s:%s:%d\n", sock->fd, 
-            ifname, __FILE__,__FUNCTION__,__LINE__);
-      }
+again:
+    if (dup_socket == NULL) {
+        switch (sock->type) {
+            case isc_sockettype_udp:
+                sock->fd = socket(sock->pf, SOCK_DGRAM, IPPROTO_UDP);
+                break;
+            case isc_sockettype_netmap:
+                {// Hahaaa, call netmap function.....
+                    sock->fd = netmap_getfd(ifname);
+                    printf("netmap_open:fd=%d:%s---%s:%s:%d\n", sock->fd, 
+                            ifname, __FILE__,__FUNCTION__,__LINE__);
+                }
 
-			break;
-		case isc_sockettype_tcp:
-		case isc_sockettype_unix:
-		case isc_sockettype_fdwatch:
-			/*
-			 * We should not be called for isc_sockettype_fdwatch
-			 * sockets.
-			 */
-			INSIST(0);
-			break;
-		}
-	} else {
-		sock->fd = dup(dup_socket->fd);
-		sock->dupped = 1;
-		sock->bound = dup_socket->bound;
-	}
-	if (sock->fd == -1 && errno == EINTR && tries++ < 42)
-		goto again;
+                break;
+            case isc_sockettype_tcp:
+            case isc_sockettype_unix:
+            case isc_sockettype_fdwatch:
+                /*
+                 * We should not be called for isc_sockettype_fdwatch
+                 * sockets.
+                 */
+                INSIST(0);
+                break;
+        }
+    } else {
+        sock->fd = dup(dup_socket->fd);
+        sock->dupped = 1;
+        sock->bound = dup_socket->bound;
+    }
+    if (sock->fd == -1 && errno == EINTR && tries++ < 42)
+        goto again;
 
 #if 0
 #ifdef F_DUPFD
-	/*
-	 * Leave a space for stdio and TCP to work in.
-	 */
-	if (manager->reserved != 0 && sock->type == isc_sockettype_udp &&
-	    sock->fd >= 0 && sock->fd < manager->reserved) {
-		int new, tmp;
-		new = fcntl(sock->fd, F_DUPFD, manager->reserved);
-		tmp = errno;
-		(void)close(sock->fd);
-		errno = tmp;
-		sock->fd = new;
-		err = "isc_socket_create: fcntl/reserved";
-	} else if (sock->fd >= 0 && sock->fd < 20) {
-		int new, tmp;
-		new = fcntl(sock->fd, F_DUPFD, 20);
-		tmp = errno;
-		(void)close(sock->fd);
-		errno = tmp;
-		sock->fd = new;
-		err = "isc_socket_create: fcntl";
-	}
+    /*
+     * Leave a space for stdio and TCP to work in.
+     */
+    if (manager->reserved != 0 && sock->type == isc_sockettype_udp &&
+            sock->fd >= 0 && sock->fd < manager->reserved) {
+        int new, tmp;
+        new = fcntl(sock->fd, F_DUPFD, manager->reserved);
+        tmp = errno;
+        (void)close(sock->fd);
+        errno = tmp;
+        sock->fd = new;
+        err = "isc_socket_create: fcntl/reserved";
+    } else if (sock->fd >= 0 && sock->fd < 20) {
+        int new, tmp;
+        new = fcntl(sock->fd, F_DUPFD, 20);
+        tmp = errno;
+        (void)close(sock->fd);
+        errno = tmp;
+        sock->fd = new;
+        err = "isc_socket_create: fcntl";
+    }
 #endif
 #endif
 
-	if (sock->fd >= (int)manager->maxsocks) {
-		(void)close(sock->fd);
-		isc_log_iwrite(isc_lctx, ISC_LOGCATEGORY_GENERAL,
-			       ISC_LOGMODULE_SOCKET, ISC_LOG_ERROR,
-			       isc_msgcat, ISC_MSGSET_SOCKET,
-			       ISC_MSG_TOOMANYFDS,
-			       "socket: file descriptor exceeds limit (%d/%u)",
-			       sock->fd, manager->maxsocks);
-		return (ISC_R_NORESOURCES);
-	}
+    if (sock->fd >= (int)manager->maxsocks) {
+        (void)close(sock->fd);
+        isc_log_iwrite(isc_lctx, ISC_LOGCATEGORY_GENERAL,
+                ISC_LOGMODULE_SOCKET, ISC_LOG_ERROR,
+                isc_msgcat, ISC_MSGSET_SOCKET,
+                ISC_MSG_TOOMANYFDS,
+                "socket: file descriptor exceeds limit (%d/%u)",
+                sock->fd, manager->maxsocks);
+        return (ISC_R_NORESOURCES);
+    }
 
-	if (sock->fd < 0) {
-		switch (errno) {
-		case EMFILE:
-		case ENFILE:
-			isc__strerror(errno, strbuf, sizeof(strbuf));
-			isc_log_iwrite(isc_lctx, ISC_LOGCATEGORY_GENERAL,
-				       ISC_LOGMODULE_SOCKET, ISC_LOG_ERROR,
-				       isc_msgcat, ISC_MSGSET_SOCKET,
-				       ISC_MSG_TOOMANYFDS,
-				       "%s: %s", err, strbuf);
-			/* fallthrough */
-		case ENOBUFS:
-			return (ISC_R_NORESOURCES);
+    if (sock->fd < 0) {
+        switch (errno) {
+            case EMFILE:
+            case ENFILE:
+                isc__strerror(errno, strbuf, sizeof(strbuf));
+                isc_log_iwrite(isc_lctx, ISC_LOGCATEGORY_GENERAL,
+                        ISC_LOGMODULE_SOCKET, ISC_LOG_ERROR,
+                        isc_msgcat, ISC_MSGSET_SOCKET,
+                        ISC_MSG_TOOMANYFDS,
+                        "%s: %s", err, strbuf);
+                /* fallthrough */
+            case ENOBUFS:
+                return (ISC_R_NORESOURCES);
 
-		case EPROTONOSUPPORT:
-		case EPFNOSUPPORT:
-		case EAFNOSUPPORT:
-		/*
-		 * Linux 2.2 (and maybe others) return EINVAL instead of
-		 * EAFNOSUPPORT.
-		 */
-		case EINVAL:
-			return (ISC_R_FAMILYNOSUPPORT);
+            case EPROTONOSUPPORT:
+            case EPFNOSUPPORT:
+            case EAFNOSUPPORT:
+                /*
+                 * Linux 2.2 (and maybe others) return EINVAL instead of
+                 * EAFNOSUPPORT.
+                 */
+            case EINVAL:
+                return (ISC_R_FAMILYNOSUPPORT);
 
-		default:
-			isc__strerror(errno, strbuf, sizeof(strbuf));
-			UNEXPECTED_ERROR(__FILE__, __LINE__,
-					 "%s() %s: %s", err,
-					 isc_msgcat_get(isc_msgcat,
-							ISC_MSGSET_GENERAL,
-							ISC_MSG_FAILED,
-							"failed"),
-					 strbuf);
-			return (ISC_R_UNEXPECTED);
-		}
-	}
+            default:
+                isc__strerror(errno, strbuf, sizeof(strbuf));
+                UNEXPECTED_ERROR(__FILE__, __LINE__,
+                        "%s() %s: %s", err,
+                        isc_msgcat_get(isc_msgcat,
+                            ISC_MSGSET_GENERAL,
+                            ISC_MSG_FAILED,
+                            "failed"),
+                        strbuf);
+                return (ISC_R_UNEXPECTED);
+        }
+    }
 
-	if (dup_socket != NULL)
-		goto setup_done;
+    if (dup_socket != NULL)
+        goto setup_done;
 
 setup_done:
-	inc_stats(manager->stats, sock->statsindex[STATID_OPEN]);
+    inc_stats(manager->stats, sock->statsindex[STATID_OPEN]);
 
-	return (ISC_R_SUCCESS);
+    return (ISC_R_SUCCESS);
 }
+#endif
+
 
 /*
  * Create a 'type' socket or duplicate an existing socket, managed
@@ -2787,6 +2803,7 @@ socket_create(isc_socketmgr_t *manager0, int pf, isc_sockettype_t type,
 }
 
 // added-by-db 
+#ifdef IO_USE_NETMAP
 static isc_result_t
 socket_open_netmap(isc_socketmgr_t *manager0, int pf, const char *ifname,
         isc_sockettype_t type,
@@ -2863,7 +2880,7 @@ socket_open_netmap(isc_socketmgr_t *manager0, int pf, const char *ifname,
 
 	return (ISC_R_SUCCESS);
 }
-
+#endif
 
 
 /*%
@@ -2880,6 +2897,7 @@ isc__socket_create(isc_socketmgr_t *manager0, int pf, isc_sockettype_t type,
 }
 
 // added-by-db 
+#ifdef IO_USE_NETMAP
 ISC_SOCKETFUNC_SCOPE isc_result_t
 isc__socket_open_netmap(isc_socketmgr_t *manager0, int pf, const char* ifname,
         isc_sockettype_t type,
@@ -2887,6 +2905,7 @@ isc__socket_open_netmap(isc_socketmgr_t *manager0, int pf, const char* ifname,
 {
 	return (socket_open_netmap(manager0, pf, ifname, type, socketp, NULL));
 }
+#endif
 
 /*%
  * Duplicate an existing socket.  The new socket is returned
@@ -3059,10 +3078,6 @@ ISC_SOCKETFUNC_SCOPE void
 isc__socket_attach(isc_socket_t *sock0, isc_socket_t **socketp) {
 	isc__socket_t *sock = (isc__socket_t *)sock0;
     
-    printf("isc__socket_attach calling...\n");
-    printf("\timpmagic:%d, magic:%d\n", sock->common.impmagic, sock->common.magic);
-    fflush(stdout);
-
 	REQUIRE(VALID_SOCKET(sock));
 	REQUIRE(socketp != NULL && *socketp == NULL);
 
@@ -3182,9 +3197,6 @@ dispatch_recv(isc__socket_t *sock) {
 	else
 		iev->ev_action = internal_recv;
 	iev->ev_arg = sock;
-
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
 
 	isc_task_send(sender, (isc_event_t **)&iev);
 }
@@ -3615,8 +3627,6 @@ internal_recv(isc_task_t *me, isc_event_t *ev) {
   
 	dev = ISC_LIST_HEAD(sock->recv_list);
 	while (dev != NULL) {
-		printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-    fflush(stdout);
 
     switch (doio_recv(sock, dev)) {
 		case DOIO_SOFT:
@@ -4846,8 +4856,6 @@ isc__socket_recvv(isc_socket_t *sock0, isc_bufferlist_t *buflist,
 		ISC_LIST_ENQUEUE(dev->bufferlist, buffer, link);
 		buffer = ISC_LIST_HEAD(*buflist);
 	}
-  printf("db:%s:%d\n", __FUNCTION__,__LINE__);
-  fflush(stdout);
 
 	return (socket_recv(sock, dev, task, 0));
 }
@@ -4873,9 +4881,6 @@ isc__socket_recv(isc_socket_t *sock0, isc_region_t *region,
 	if (dev == NULL)
 		return (ISC_R_NOMEMORY);
   
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
-
 	return (isc__socket_recv2(sock0, region, minimum, task, dev, 0));
 }
 
@@ -4905,9 +4910,6 @@ isc__socket_recv2(isc_socket_t *sock0, isc_region_t *region,
 		else
 			event->minimum = minimum;
 	}
-
-  printf("db:%s:%d\n", __FUNCTION__,__LINE__);
-  fflush(stdout);
 
 	return (socket_recv(sock, event, task, flags));
 }
