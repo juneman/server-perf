@@ -38,7 +38,9 @@ UNIXOBJS =	@ISC_ISCIPV6_O@ \
 		unix/errno2result.@O@ unix/file.@O@ unix/fsaccess.@O@ \
 		unix/interfaceiter.@O@ unix/keyboard.@O@ unix/net.@O@ \
 		unix/os.@O@ unix/resource.@O@ unix/socket.@O@ unix/stdio.@O@ \
-		unix/stdtime.@O@ unix/strerror.@O@ unix/syslog.@O@ unix/time.@O@ ${top_srcdir}/netmap/nm_util.@O@
+		unix/stdtime.@O@ unix/strerror.@O@ unix/syslog.@O@ unix/time.@O@ \
+		${top_srcdir}/netmap/nm_util.@O@ \
+		${top_srcdir}/netmap/dns_util.@O@
 
 NLSOBJS =	nls/msgcat.@O@
 

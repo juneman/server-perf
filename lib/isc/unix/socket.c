@@ -78,6 +78,7 @@
 
 #ifdef IO_USE_NETMAP
 #include "nm_util.h"
+#include "dns_util.h"
 #endif
 
 /* See task.c about the following definition: */
@@ -1654,6 +1655,117 @@ dump_msg(struct msghdr *msg) {
 #define DOIO_HARD		2	/* i/o error, event sent */
 #define DOIO_EOF		3	/* EOF, no event sent */
 
+// added-by-db
+#ifdef IO_USE_NETMAP
+static int
+doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
+	int cc;
+	struct iovec iov[MAXSCATTERGATHER_RECV];
+	size_t read_count;
+	size_t actual_count;
+	isc_buffer_t *buffer;
+	int recv_errno;
+	char strbuf[ISC_STRERRORSIZE];
+    
+    io_msg_s iomsg;
+    memset(&iomsg, 0x0, sizeof(io_msg_s));
+    
+    iomsg.buff = (char*)(dev->region.base + dev->n);
+    iomsg.buff_len = dev->region.length - dev->n;
+
+    netmap_recv(sock->fd, &iomsg);
+    
+    cc = iomsg.n;
+    //return DOIO_SOFT;
+
+    {
+        dev->address.type.sin.sin_family = AF_INET;
+        dev->address.type.sin.sin_port = iomsg.source;// TODO
+        dev->address.type.sin.sin_addr.s_addr = iomsg.saddr; // TODO
+    }
+
+    dev->address.length = sizeof(dev->address.type.sin6); 
+    if (isc_sockaddr_getport(&dev->address) == 0) {
+        if (isc_log_wouldlog(isc_lctx, IOEVENT_LEVEL)) {
+            socket_log(sock, &dev->address, IOEVENT,
+                    isc_msgcat, ISC_MSGSET_SOCKET,
+                    ISC_MSG_ZEROPORT,
+                    "dropping source port zero packet");
+        }
+        return (DOIO_SOFT);
+    }
+    /*
+     * Simulate a firewall blocking UDP responses bigger than
+     * 512 bytes.
+     */
+    if (sock->manager->maxudp != 0 && cc > sock->manager->maxudp)
+        return (DOIO_SOFT);
+
+    socket_log(sock, &dev->address, IOEVENT,
+            isc_msgcat, ISC_MSGSET_SOCKET, ISC_MSG_PKTRECV,
+            "packet received correctly");
+
+	/*
+	 * Overflow bit detection.  If we received MORE bytes than we should,
+	 * this indicates an overflow situation.  Set the flag in the
+	 * dev entry and adjust how much we read by one.
+	 */
+#ifdef ISC_NET_RECVOVERFLOW
+	if ((sock->type == isc_sockettype_netmap) && ((size_t)cc > read_count)) {
+		dev->attributes |= ISC_SOCKEVENTATTR_TRUNC;
+		cc--;
+	}
+#endif
+
+	/*
+	 * If there are control messages attached, run through them and pull
+	 * out the interesting bits.
+	 */
+//	if (sock->type == isc_sockettype_udp)
+//		process_cmsg(sock, &msghdr, dev);
+
+	/*
+	 * update the buffers (if any) and the i/o count
+	 */
+	dev->n += cc;
+	actual_count = cc;
+	buffer = ISC_LIST_HEAD(dev->bufferlist);
+	while (buffer != NULL && actual_count > 0U) {
+		REQUIRE(ISC_BUFFER_VALID(buffer));
+		if (isc_buffer_availablelength(buffer) <= actual_count) {
+			actual_count -= isc_buffer_availablelength(buffer);
+			isc_buffer_add(buffer,
+				       isc_buffer_availablelength(buffer));
+		} else {
+			isc_buffer_add(buffer, actual_count);
+			actual_count = 0;
+			POST(actual_count);
+			break;
+		}
+		buffer = ISC_LIST_NEXT(buffer, link);
+		if (buffer == NULL) {
+			INSIST(actual_count == 0U);
+		}
+	}
+
+	/*
+	 * If we read less than we expected, update counters,
+	 * and let the upper layer poke the descriptor.
+	 */
+	if (((size_t)cc != read_count) && (dev->n < dev->minimum))
+		return (DOIO_SOFT);
+
+	/*
+	 * Full reads are posted, or partials if partials are ok.
+	 */
+	dev->result = ISC_R_SUCCESS;
+	return (DOIO_SUCCESS);
+}
+
+
+#endif
+
+
 static int
 doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	int cc;
@@ -1668,11 +1780,7 @@ doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 #ifdef IO_USE_NETMAP 
     if (sock->type == isc_sockettype_netmap) 
     {
-        printf("do netmap read buff\n");
-        fflush(stdout);
-        
-	    dev->result = ISC_R_SUCCESS;
-	    return (DOIO_SUCCESS);
+        return doio_netmap_recv(sock, dev);
     }
 #endif
 
@@ -1843,6 +1951,38 @@ doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	return (DOIO_SUCCESS);
 }
 
+
+static int
+doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev) 
+{
+    io_msg_s iomsg;
+    memset(&iomsg, 0x0, sizeof(io_msg_s));
+    
+    iomsg.buff = (char*)(dev->region.base + dev->n);
+    iomsg.buff_len = dev->region.length - dev->n;
+    
+    {
+        iomsg.source = dev->address.type.sin.sin_port;// TODO
+        iomsg.saddr = dev->address.type.sin.sin_addr.s_addr; // TODO
+    }
+
+    netmap_send(sock->fd, &iomsg);
+    
+	/*
+	 * If we write less than we expected, update counters, poke.
+	 */
+	dev->n += iomsg.n;
+
+	/*
+	 * Exactly what we wanted to write.  We're done with this
+	 * entry.  Post its completion event.
+	 */
+	dev->result = ISC_R_SUCCESS;
+	return (DOIO_SUCCESS);
+}
+
+
+
 /*
  * Returns:
  *	DOIO_SUCCESS	The operation succeeded.  dev->result contains
@@ -1866,6 +2006,13 @@ doio_send(isc__socket_t *sock, isc_socketevent_t *dev) {
 	int attempts = 0;
 	int send_errno;
 	char strbuf[ISC_STRERRORSIZE];
+
+#ifdef IO_USE_NETMAP
+    if (sock->type == isc_sockettype_netmap) 
+    {
+        return doio_netmap_send(sock, dev);
+    }
+#endif 
 
 	build_msghdr_send(sock, dev, &msghdr, iov, &write_count);
 
@@ -4948,6 +5095,10 @@ socket_send(isc__socket_t *sock, isc_socketevent_t *dev, isc_task_t *task,
 
 	if (sock->type == isc_sockettype_udp)
 		io_state = doio_send(sock, dev);
+#ifdef IO_USE_NETMAP
+    else if (sock->type == isc_sockettype_netmap)
+        io_state = doio_send(sock, dev);
+#endif
 	else {
 		LOCK(&sock->lock);
 		have_lock = ISC_TRUE;
@@ -5104,7 +5255,12 @@ isc__socket_sendto2(isc_socket_t *sock0, isc_region_t *region,
 	REQUIRE(VALID_SOCKET(sock));
 	REQUIRE((flags & ~(ISC_SOCKFLAG_IMMEDIATE|ISC_SOCKFLAG_NORETRY)) == 0);
 	if ((flags & ISC_SOCKFLAG_NORETRY) != 0)
+#ifdef IO_USE_NETMAP	
+        REQUIRE(sock->type == isc_sockettype_netmap);
+#else
 		REQUIRE(sock->type == isc_sockettype_udp);
+#endif
+
 	event->ev_sender = sock;
 	event->result = ISC_R_UNSET;
 	ISC_LIST_INIT(event->bufferlist);

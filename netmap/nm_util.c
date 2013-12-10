@@ -1,40 +1,7 @@
-/*
- * Copyright (C) 2012 Luigi Rizzo. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *   1. Redistributions of source code must retain the above copyright
- *      notice, this list of conditions and the following disclaimer.
- *   2. Redistributions in binary form must reproduce the above copyright
- *      notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
-
-/*
- * $FreeBSD$
- * $Id$
- *
- * utilities to use netmap devices.
- * This does the basic functions of opening a device and issuing
- * ioctls()
- */
 #include <assert.h>
 #include "nm_util.h"
 
-int verbose = 0;
+static int verbose = 0;
 
 int
 nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
@@ -225,7 +192,7 @@ typedef struct _netmap_storage_s_ {
   int fd;
 }netmap_storage_s;
 
-#define NM_MAX_FDS 256
+#define NM_MAX_FDS 32
 static netmap_storage_s g_storage[NM_MAX_FDS];
 
 static int g_inited = 0;
@@ -266,5 +233,19 @@ int netmap_getfd(const char *ifname)
   netmap_open(&sto->ring, 0, 0);
   sto->fd = sto->ring.fd;
   return sto->fd;
+}
+
+struct my_ring* netmap_getring(int fd)
+{
+    int index = 0;
+    netmap_storage_s *sto;
+    for (index = 0; index < NM_MAX_FDS; index ++ ) 
+    {
+        sto = &g_storage[index];
+        if (sto->fd == fd)
+            return &sto->ring;
+    }
+    
+    return NULL;
 }
 
