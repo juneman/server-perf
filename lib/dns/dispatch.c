@@ -1897,7 +1897,6 @@ destroy_mgr(dns_dispatchmgr_t **mgrp) {
 	isc_mem_detach(&mctx);
 }
 
-
 static isc_result_t
 open_socket(isc_socketmgr_t *mgr, isc_sockaddr_t *local,
 	    unsigned int options, isc_socket_t **sockp,
@@ -2828,7 +2827,6 @@ dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, isc_socket_t *sock,
 	return (result);
 }
 
-
 isc_result_t
 dns_dispatch_getudp_dup(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		    isc_taskmgr_t *taskmgr, isc_sockaddr_t *localaddr,
@@ -3317,7 +3315,7 @@ dispatch_create_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 
     // modify-by-db 2013-12-06
     result = open_netmap(sockmgr, localaddr, ifname, 0, &sock, NULL);
-    if (sock != NULL)
+    if (sock == NULL)
     {
         goto deallocate_dispatch;
     }

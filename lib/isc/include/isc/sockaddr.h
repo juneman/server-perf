@@ -30,7 +30,6 @@
 #endif
 
 struct isc_sockaddr {
-
 	union {
 		struct sockaddr		sa;
 		struct sockaddr_in	sin;
@@ -40,7 +39,6 @@ struct isc_sockaddr {
 		struct sockaddr_un	sunix;
 #endif
 	}				type;
-
 	unsigned int			length;		/* XXXRTH beginning? */
 	ISC_LINK(struct isc_sockaddr)	link;
 };

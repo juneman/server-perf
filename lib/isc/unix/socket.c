@@ -3227,7 +3227,6 @@ isc__socket_fdwatchpoke(isc_socket_t *sock0, int flags)
 ISC_SOCKETFUNC_SCOPE void
 isc__socket_attach(isc_socket_t *sock0, isc_socket_t **socketp) {
 	isc__socket_t *sock = (isc__socket_t *)sock0;
-    
 	REQUIRE(VALID_SOCKET(sock));
 	REQUIRE(socketp != NULL && *socketp == NULL);
 
@@ -3774,11 +3773,9 @@ internal_recv(isc_task_t *me, isc_event_t *ev) {
 	 * Try to do as much I/O as possible on this socket.  There are no
 	 * limits here, currently.
 	 */
-  
 	dev = ISC_LIST_HEAD(sock->recv_list);
 	while (dev != NULL) {
-
-    switch (doio_recv(sock, dev)) {
+        switch (doio_recv(sock, dev)) {
 		case DOIO_SOFT:
 			goto poke;
 
@@ -5030,7 +5027,6 @@ isc__socket_recv(isc_socket_t *sock0, isc_region_t *region,
 	dev = allocate_socketevent(sock, ISC_SOCKEVENT_RECVDONE, action, arg);
 	if (dev == NULL)
 		return (ISC_R_NOMEMORY);
-  
 	return (isc__socket_recv2(sock0, region, minimum, task, dev, 0));
 }
 

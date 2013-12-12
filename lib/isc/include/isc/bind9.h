@@ -26,6 +26,8 @@
  * exportable libraries does not.
  */
 #define BIND9 1
-#define IO_USE_NETMAP 1
+
+// added-by-db
+#define IO_USE_NETMAP 1 // if set ,enable netmap module; 
 
 #endif /* ISC_BIND9_H */

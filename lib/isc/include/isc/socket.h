@@ -358,7 +358,7 @@ struct isc_socket {
 };
 #endif
 
-#define ISCAPI_SOCKET_MAGIC	 ISC_MAGIC('A','s','c','t')
+#define ISCAPI_SOCKET_MAGIC ISC_MAGIC('A','s','c','t')
 #define ISCAPI_SOCKET_VALID(s)	((s) != NULL && \
 				 (s)->magic == ISCAPI_SOCKET_MAGIC)
 
