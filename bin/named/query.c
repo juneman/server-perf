@@ -7462,9 +7462,6 @@ ns_query_start(ns_client_t *client) {
 
 	CTRACE("ns_query_start");
 
-    printf(" recv dns query...\n");
-    fflush(stdout);
-
 	/*
 	 * Test only.
 	 */

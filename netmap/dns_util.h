@@ -33,18 +33,21 @@ typedef struct _io_msg_s_ {
     char *buff;  // read/write buffer
     int buff_len; // length of buff
     int n; // read/write n bytes from/to netmap
-    unsigned long saddr;
-    unsigned long daddr;
+    unsigned int saddr;
+    unsigned int daddr;
     unsigned short source;
     unsigned short dest;
 }io_msg_s;
 
 typedef struct _macaddr_map_s_ {
-    char smac[6];
-    char dmac[6];
+    char smac[6]; // local mac addr
+    char dmac[6]; // remote mac addr
     char dirty;
-    char pad;
+    char pad1;
     unsigned short qid; // dns query id
+    unsigned int saddr; // local ip addr
+    unsigned short source; // local udp port
+    char pad2[2];
 }macaddr_map_s;
 
 int is_dns_query(char *buff, int len);

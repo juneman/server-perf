@@ -1687,12 +1687,6 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
         dev->address.type.sin.sin_port = iomsg.source;// TODO
         dev->address.type.sin.sin_addr.s_addr = iomsg.saddr; // TODO
     }
-printf("\t recv %d bytes: source port:%d , dest port:%d\n", 
-        cc, htons(iomsg.source), htons(iomsg.dest));
-char *p = (char *) &iomsg.daddr;
-printf("%s:%s:%d: recv dest addr:%x:%x:%x:%x\n", __FILE__,__FUNCTION__, __LINE__,
-                            p[0]&0xff, p[1]&0xff, p[2]&0xff, p[3]&0xff);
-fflush(stdout);
 
     dev->address.length = sizeof(dev->address.type.sin6); 
     if (isc_sockaddr_getport(&dev->address) == 0) {
@@ -1975,12 +1969,6 @@ doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev)
         iomsg.dest = dev->address.type.sin.sin_port;// TODO
         iomsg.daddr = dev->address.type.sin.sin_addr.s_addr; // TODO
     }
-
-printf("%s:%s:%d: iomsg dest port:%d\n", __FILE__,__FUNCTION__, __LINE__,htons(iomsg.dest));
-char *p = (char *) &iomsg.daddr;
-printf("%s:%s:%d: iomsg dest addr:%x:%x:%x:%x\n", __FILE__,__FUNCTION__, __LINE__,
-                            p[0]&0xff, p[1]&0xff, p[2]&0xff, p[3]&0xff);
-fflush(stdout);
 
     netmap_send(sock->fd, &iomsg);
 
@@ -2484,7 +2472,6 @@ again:
                 break;
 #ifdef IO_USE_NETMAP        
             case isc_sockettype_netmap:
-                printf("handled sockettype_netmap:%s:%s:%d\n", __FILE__,__FUNCTION__,__LINE__);
                 INSIST(0);
                 break;
 #endif
@@ -2774,10 +2761,10 @@ again:
                 sock->fd = socket(sock->pf, SOCK_DGRAM, IPPROTO_UDP);
                 break;
             case isc_sockettype_netmap:
-                {// Hahaaa, call netmap function.....
+                {
+                    // Hahaaa, call netmap function.....
                     sock->fd = netmap_getfd(ifname);
-                    printf("netmap_open:fd=%d:%s---%s:%s:%d\n", sock->fd, 
-                            ifname, __FILE__,__FUNCTION__,__LINE__);
+                    printf("netmap open fd:%d on %s\n", sock->fd, ifname);
                 }
 
                 break;
