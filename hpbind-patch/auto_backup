@@ -1,0 +1,24 @@
+#!/bin/sh
+
+BIND9_DEV_DIR=~/bind-9.9.3-P2-dubin.bak
+TARGET_DIR=./storage
+
+rm -rf ${TARGET_DIR}
+mkdir -p ${TARGET_DIR}
+
+mkdir -p ${TARGET_DIR}/bin/named/
+mkdir -p ${TARGET_DIR}/lib/dns/include/dns/
+mkdir -p ${TARGET_DIR}/lib/isc/include/isc/
+mkdir -p ${TARGET_DIR}/lib/isc/unix/
+mkdir -p ${TARGET_DIR}/netmap/net
+
+cp -v ${BIND9_DEV_DIR}/bin/named/client.c ${TARGET_DIR}/bin/named/
+cp -v ${BIND9_DEV_DIR}/bin/named/interfacemgr.c ${TARGET_DIR}/bin/named/
+cp -v ${BIND9_DEV_DIR}/lib/dns/include/dns/dispatch.h ${TARGET_DIR}/lib/dns/include/dns/
+cp -v ${BIND9_DEV_DIR}/lib/dns/dispatch.c ${TARGET_DIR}/lib/dns/
+cp -v ${BIND9_DEV_DIR}/lib/isc/include/isc/{bind9.h,namespace.h,socket.h} ${TARGET_DIR}/lib/isc/include/isc/
+cp -v ${BIND9_DEV_DIR}/lib/isc/unix/{Makefile.in,socket.c} ${TARGET_DIR}/lib/isc/unix/
+cp -v ${BIND9_DEV_DIR}/lib/isc/{Makefile.in,socket_api.c,task.c} ${TARGET_DIR}/lib/isc/
+cp -vr ${BIND9_DEV_DIR}/netmap/net/* ${TARGET_DIR}/netmap/net/ 
+cp -v ${BIND9_DEV_DIR}/netmap/{Makefile,*.h,*.c} ${TARGET_DIR}/netmap/
+cp -v ${BIND9_DEV_DIR}/Makefile.in ${TARGET_DIR}
