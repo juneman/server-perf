@@ -30,14 +30,22 @@
 #include "nm_util.h"
 
 typedef struct _io_msg_s_ {
-    char *buff;
-    int buff_len; // length of dest buff
+    char *buff;  // read/write buffer
+    int buff_len; // length of buff
     int n; // read/write n bytes from/to netmap
     unsigned long saddr;
     unsigned long daddr;
     unsigned short source;
     unsigned short dest;
 }io_msg_s;
+
+typedef struct _macaddr_map_s_ {
+    char smac[6];
+    char dmac[6];
+    char dirty;
+    char pad;
+    unsigned short qid; // dns query id
+}macaddr_map_s;
 
 int is_dns_query(char *buff, int len);
 

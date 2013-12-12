@@ -1582,7 +1582,12 @@ static void
 set_dev_address(isc_sockaddr_t *address, isc__socket_t *sock,
 		isc_socketevent_t *dev)
 {
-	if (sock->type == isc_sockettype_udp) {
+	if (sock->type == isc_sockettype_udp 
+#ifdef IO_USE_NETMAP 
+           || sock->type == isc_sockettype_netmap 
+#endif 
+        )
+    {
 		if (address != NULL)
 			dev->address = *address;
 		else
@@ -1676,13 +1681,18 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
     netmap_recv(sock->fd, &iomsg);
     
     cc = iomsg.n;
-    //return DOIO_SOFT;
 
     {
         dev->address.type.sin.sin_family = AF_INET;
         dev->address.type.sin.sin_port = iomsg.source;// TODO
         dev->address.type.sin.sin_addr.s_addr = iomsg.saddr; // TODO
     }
+printf("\t recv %d bytes: source port:%d , dest port:%d\n", 
+        cc, htons(iomsg.source), htons(iomsg.dest));
+char *p = (char *) &iomsg.daddr;
+printf("%s:%s:%d: recv dest addr:%x:%x:%x:%x\n", __FILE__,__FUNCTION__, __LINE__,
+                            p[0]&0xff, p[1]&0xff, p[2]&0xff, p[3]&0xff);
+fflush(stdout);
 
     dev->address.length = sizeof(dev->address.type.sin6); 
     if (isc_sockaddr_getport(&dev->address) == 0) {
@@ -1951,7 +1961,7 @@ doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	return (DOIO_SUCCESS);
 }
 
-
+#ifdef IO_USE_NETMAP
 static int
 doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev) 
 {
@@ -1960,14 +1970,20 @@ doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev)
     
     iomsg.buff = (char*)(dev->region.base + dev->n);
     iomsg.buff_len = dev->region.length - dev->n;
-    
+
     {
-        iomsg.source = dev->address.type.sin.sin_port;// TODO
-        iomsg.saddr = dev->address.type.sin.sin_addr.s_addr; // TODO
+        iomsg.dest = dev->address.type.sin.sin_port;// TODO
+        iomsg.daddr = dev->address.type.sin.sin_addr.s_addr; // TODO
     }
 
+printf("%s:%s:%d: iomsg dest port:%d\n", __FILE__,__FUNCTION__, __LINE__,htons(iomsg.dest));
+char *p = (char *) &iomsg.daddr;
+printf("%s:%s:%d: iomsg dest addr:%x:%x:%x:%x\n", __FILE__,__FUNCTION__, __LINE__,
+                            p[0]&0xff, p[1]&0xff, p[2]&0xff, p[3]&0xff);
+fflush(stdout);
+
     netmap_send(sock->fd, &iomsg);
-    
+
 	/*
 	 * If we write less than we expected, update counters, poke.
 	 */
@@ -1980,7 +1996,7 @@ doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev)
 	dev->result = ISC_R_SUCCESS;
 	return (DOIO_SUCCESS);
 }
-
+#endif
 
 
 /*
