@@ -1123,6 +1123,10 @@ free_buffer(dns_dispatch_t *disp, void *buf, unsigned int len) {
 		isc_mem_put(disp->mgr->mctx, buf, len);
 		break;
 	case isc_sockettype_udp:
+ // added-by-db
+#ifdef IO_USE_NETMAP
+	case isc_sockettype_netmap:
+#endif
 		LOCK(&disp->mgr->buffer_lock);
 		INSIST(disp->mgr->buffers > 0);
 		INSIST(len == disp->mgr->buffersize);
@@ -1746,6 +1750,12 @@ startrecv(dns_dispatch_t *disp, dispsocket_t *dispsock) {
 		 * UDP reads are always maximal.
 		 */
 	case isc_sockettype_udp:
+
+/// added-by-db        
+#ifdef IO_USE_NETMAP        
+	case isc_sockettype_netmap:
+#endif
+
 		region.length = disp->mgr->buffersize;
 		region.base = allocate_udp_buffer(disp);
 		if (region.base == NULL)

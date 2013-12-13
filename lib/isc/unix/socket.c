@@ -1677,6 +1677,7 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
     
     iomsg.buff = (char*)(dev->region.base + dev->n);
     iomsg.buff_len = dev->region.length - dev->n;
+    read_count = iomsg.buff_len;
 
     netmap_recv(sock->fd, &iomsg);
     
@@ -1715,7 +1716,7 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	 * dev entry and adjust how much we read by one.
 	 */
 #ifdef ISC_NET_RECVOVERFLOW
-	if ((sock->type == isc_sockettype_netmap) && ((size_t)cc > read_count)) {
+	if ((size_t)cc > read_count) {
 		dev->attributes |= ISC_SOCKEVENTATTR_TRUNC;
 		cc--;
 	}
@@ -1725,8 +1726,7 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	 * If there are control messages attached, run through them and pull
 	 * out the interesting bits.
 	 */
-//	if (sock->type == isc_sockettype_udp)
-//		process_cmsg(sock, &msghdr, dev);
+	//process_cmsg(sock, &msghdr, dev);
 
 	/*
 	 * update the buffers (if any) and the i/o count
