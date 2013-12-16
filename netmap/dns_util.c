@@ -262,7 +262,7 @@ static int process_recv_ring(struct netmap_ring *rxring,
         }
 
         if (rs->buf_idx < 2) {
-            sleep(2);
+            //sleep(2);
         }
 
         /* copy the packet lenght. */

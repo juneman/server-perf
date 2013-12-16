@@ -57,6 +57,14 @@
 #include <isc/util.h>
 #include <isc/xml.h>
 
+// added-by-db
+// for use poll 
+#ifdef ISC_PLATFORM_HAVE_POLL
+#undef ISC_PLATFORM_HAVEKQUEUE 
+#undef ISC_PLATFORM_HAVEEPOLL
+#undef ISC_PLATFORM_HAVEDEVPOLL
+#endif
+
 #ifdef ISC_PLATFORM_HAVESYSUNH
 #include <sys/un.h>
 #endif
@@ -79,6 +87,11 @@
 #ifdef IO_USE_NETMAP
 #include "nm_util.h"
 #include "dns_util.h"
+#endif
+
+/// added-by-db
+#ifdef ISC_PLATFORM_HAVE_POLL
+#include <sys/poll.h>
 #endif
 
 /* See task.c about the following definition: */
@@ -115,6 +128,17 @@ typedef struct {
 #else
 #define USE_SELECT
 #endif	/* ISC_PLATFORM_HAVEKQUEUE */
+
+// added-by-db
+#ifdef ISC_PLATFORM_HAVE_POLL
+#undef USE_KQUEUE
+#undef USE_EPOLL
+#undef USE_DEVPOLL
+#undef USE_SELECT
+
+#define USE_POLL
+#endif
+
 
 #ifndef USE_WATCHER_THREAD
 #if defined(USE_KQUEUE) || defined(USE_EPOLL) || defined(USE_DEVPOLL)
@@ -155,6 +179,9 @@ struct isc_socketwait {
 #define ISC_SOCKET_MAXSOCKETS 4096
 #elif defined(USE_SELECT)
 #define ISC_SOCKET_MAXSOCKETS FD_SETSIZE
+// added-by-db
+#elif defined(USE_POLL)
+#define ISC_SOCKET_MAXSOCKETS 1024 
 #endif	/* USE_KQUEUE... */
 #endif	/* ISC_SOCKET_MAXSOCKETS */
 
@@ -385,6 +412,12 @@ struct isc__socketmgr {
 #ifdef USE_SELECT
 	int			fd_bufsize;
 #endif	/* USE_SELECT */
+
+ // added-by-db
+#ifdef USE_POLL
+    int pollfds_size;
+#endif
+
 	unsigned int		maxsocks;
 #ifdef ISC_PLATFORM_USETHREADS
 	int			pipe_fds[2];
@@ -406,6 +439,14 @@ struct isc__socketmgr {
 	fd_set			*write_fds_copy;
 	int			maxfd;
 #endif	/* USE_SELECT */
+
+    // added-by-db
+#ifdef USE_POLL
+    struct pollfd *pollfds;
+    struct pollfd *pollfds_copy;
+    int pollfds_count;
+#endif
+
 	int			reserved;	/* unlocked */
 #ifdef USE_WATCHER_THREAD
 	isc_thread_t		watcher;
@@ -823,6 +864,8 @@ inc_stats(isc_stats_t *stats, isc_statscounter_t counterid) {
 static inline isc_result_t
 watch_fd(isc__socketmgr_t *manager, int fd, int msg) {
 	isc_result_t result = ISC_R_SUCCESS;
+    
+    UNUSED(msg);
 
 #ifdef USE_KQUEUE
 	struct kevent evchange;
@@ -885,12 +928,49 @@ watch_fd(isc__socketmgr_t *manager, int fd, int msg) {
 	UNLOCK(&manager->lock);
 
 	return (result);
+// added-by-db
+#elif defined(USE_POLL)
+    LOCK(&manager->lock);
+    if (manager->pollfds_count < manager->pollfds_size) 
+    {
+        int i = 0;
+        struct pollfd *pfd = &(manager->pollfds[manager->pollfds_count]);
+
+        for (i = 0; i < manager->pollfds_count; i++) 
+        {
+            if (manager->pollfds[i].fd == 0)
+            {
+                pfd = &(manager->pollfds[i]);
+                break;
+            }
+        }
+
+        pfd->fd = fd;
+
+        if (msg == SELECT_POKE_READ)
+        {
+            pfd->events = POLLIN;
+        }
+        else 
+        {
+            pfd->events = POLLOUT;
+        }
+        
+        if (i >= manager->pollfds_count)
+            manager->pollfds_count ++;
+    }
+
+	UNLOCK(&manager->lock);
+	return (result);
+
 #endif
 }
 
 static inline isc_result_t
 unwatch_fd(isc__socketmgr_t *manager, int fd, int msg) {
 	isc_result_t result = ISC_R_SUCCESS;
+
+    UNUSED(msg);
 
 #ifdef USE_KQUEUE
 	struct kevent evchange;
@@ -972,6 +1052,28 @@ unwatch_fd(isc__socketmgr_t *manager, int fd, int msg) {
 	UNLOCK(&manager->lock);
 
 	return (result);
+
+// added-by-db
+#elif defined(USE_POLL)
+	LOCK(&manager->lock);
+    {
+        int i = 0;
+        for (i = 0; i < manager->pollfds_count; i ++)
+        {
+            struct pollfd *pfd = &manager->pollfds[i];
+            if (pfd->fd == fd)
+            {
+                pfd->fd = 0;
+                pfd->events = 0; 
+                pfd->revents = 0; 
+                break;
+            }
+        }
+    }
+	UNLOCK(&manager->lock);
+
+	return (result);
+
 #endif
 }
 
@@ -1665,12 +1767,9 @@ dump_msg(struct msghdr *msg) {
 static int
 doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	int cc;
-	struct iovec iov[MAXSCATTERGATHER_RECV];
 	size_t read_count;
 	size_t actual_count;
 	isc_buffer_t *buffer;
-	int recv_errno;
-	char strbuf[ISC_STRERRORSIZE];
     
     io_msg_s iomsg;
     memset(&iomsg, 0x0, sizeof(io_msg_s));
@@ -2753,6 +2852,11 @@ opennetmap(isc__socketmgr_t *manager, isc__socket_t *sock,
 	ISC_SOCKADDR_LEN_T optlen;
 	int size;
 #endif
+    
+    UNUSED(on);
+    UNUSED(size);
+    UNUSED(optlen);
+    UNUSED(result);
 
 again:
     if (dup_socket == NULL) {
@@ -4161,7 +4265,46 @@ process_fds(isc__socketmgr_t *manager, int maxfd, fd_set *readfds,
 			   FD_ISSET(i, writefds));
 	}
 }
+
+// added-by-db
+#elif defined(USE_POLL)
+static isc_boolean_t
+process_fds(isc__socketmgr_t *manager, struct pollfd *pfd, int nfd)
+{
+	int i;
+	isc_boolean_t done = ISC_FALSE;
+#ifdef USE_WATCHER_THREAD
+	isc_boolean_t have_ctlevent = ISC_FALSE;
 #endif
+
+    for (i = 0; i < nfd; i++) {
+#ifdef USE_WATCHER_THREAD
+        if (pfd[i].fd == manager->pipe_fds[0]) {
+            have_ctlevent = ISC_TRUE;
+            continue;
+        }
+#endif
+        if ((pfd[i].revents & POLLERR) != 0 ||
+                (pfd[i].revents & POLLHUP) != 0) 
+        {
+        }
+        else
+        {
+            process_fd(manager, pfd[i].fd,
+                    (pfd[i].revents & POLLIN) != 0,
+                    (pfd[i].revents & POLLOUT) != 0);
+        }
+    }
+
+#ifdef USE_WATCHER_THREAD
+	if (have_ctlevent)
+		done = process_ctlfd(manager);
+#endif
+
+	return (done);
+}
+#endif
+// end-of-added-by-db
 
 #ifdef USE_WATCHER_THREAD
 static isc_boolean_t
@@ -4227,6 +4370,10 @@ watcher(void *uap) {
 	const char *fnname = "select()";
 	int maxfd;
 	int ctlfd;
+
+#elif defined (USE_POLL)
+    const char *fnname = "poll()";
+
 #endif
 	char strbuf[ISC_STRERRORSIZE];
 #ifdef ISC_SOCKET_USE_POLLWATCH
@@ -4271,6 +4418,24 @@ watcher(void *uap) {
 
 			cc = select(maxfd, manager->read_fds_copy,
 				    manager->write_fds_copy, NULL, NULL);
+
+// added-by-db
+#elif defined(USE_POLL)
+			LOCK(&manager->lock);
+			memcpy(manager->pollfds_copy, manager->pollfds,
+			       manager->pollfds_count * sizeof(struct pollfd));
+			UNLOCK(&manager->lock);
+
+            {
+                int i = 0;
+                for (; i < manager->pollfds_count; i++)
+                {
+                    //printf(" %d: fd: %d\n", i, manager->pollfds_copy[i].fd);
+                }
+            }
+
+            cc = poll(manager->pollfds_copy, manager->pollfds_count, 1000); 
+            if (cc < 0 ) continue; 
 #endif	/* USE_KQUEUE */
 
 			if (cc < 0 && !SOFT_ERROR(errno)) {
@@ -4321,6 +4486,10 @@ watcher(void *uap) {
 		 */
 		if (FD_ISSET(ctlfd, manager->read_fds_copy))
 			done = process_ctlfd(manager);
+
+// added-by-db
+#elif defined(USE_POLL)
+        done = process_fds(manager, manager->pollfds_copy, manager->pollfds_count);
 #endif
 	}
 
@@ -4521,6 +4690,47 @@ setup_watcher(isc_mem_t *mctx, isc__socketmgr_t *manager) {
 #else /* USE_WATCHER_THREAD */
 	manager->maxfd = 0;
 #endif /* USE_WATCHER_THREAD */
+
+// added-by-db
+#elif defined(USE_POLL)
+	UNUSED(result);
+    
+    manager->pollfds_size = ISC_SOCKET_MAXSOCKETS;
+    manager->pollfds_count = 0;
+    manager->pollfds = NULL;
+    manager->pollfds_copy = NULL;
+    {
+        int buff_size = manager->pollfds_size * sizeof(struct pollfd);
+        manager->pollfds = isc_mem_get(mctx, buff_size);
+
+        if (manager->pollfds == NULL)
+        {
+            return (ISC_R_NOMEMORY);
+        }
+
+        manager->pollfds_copy = isc_mem_get(mctx, buff_size); 
+        if (manager->pollfds_copy == NULL)
+        {
+            isc_mem_put(mctx, manager->pollfds, buff_size);
+            return (ISC_R_NOMEMORY);
+        }
+
+        memset(manager->pollfds, 0x0, buff_size);
+        memset(manager->pollfds_copy, 0x0, buff_size);
+    }
+
+#ifdef USE_WATCHER_THREAD
+	result = watch_fd(manager, manager->pipe_fds[0], SELECT_POKE_READ);
+	if (result != ISC_R_SUCCESS) {
+        isc_mem_put(mctx, manager->pollfds, 
+               manager->pollfds_size * sizeof(struct pollfd));
+        isc_mem_put(mctx, manager->pollfds_copy, 
+               manager->pollfds_size * sizeof(struct pollfd));
+		return (result);
+	}
+#endif	/* USE_WATCHER_THREAD */
+// end-of-added-by-db
+
 #endif	/* USE_KQUEUE */
 
 	return (ISC_R_SUCCESS);
@@ -4563,6 +4773,21 @@ cleanup_watcher(isc_mem_t *mctx, isc__socketmgr_t *manager) {
 		isc_mem_put(mctx, manager->write_fds, manager->fd_bufsize);
 	if (manager->write_fds_copy != NULL)
 		isc_mem_put(mctx, manager->write_fds_copy, manager->fd_bufsize);
+// added-by-db
+#elif defined(USE_POLL)
+    {
+        int buff_size = manager->pollfds_size * sizeof(struct pollfd);
+        if (manager->pollfds != NULL)
+        {
+            isc_mem_put(mctx, manager->pollfds, buff_size);
+        }
+        if (manager->pollfds_copy != NULL)
+        {
+            isc_mem_put(mctx, manager->pollfds_copy, buff_size);
+        }
+    }
+// end-of-added-by-db
+
 #endif	/* USE_KQUEUE */
 }
 
