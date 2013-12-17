@@ -397,7 +397,7 @@ static int netmap_send_to_ring(struct my_ring *src, io_msg_s *iomsg)
 {
     int limit = 512;
     struct netmap_ring *txring;
-    u_int m = 0, ti=src->begin;
+    u_int m = 0, times = 1, ti=src->begin;
 
 #ifdef NM_DEBUG
     int flag = 0;
@@ -422,6 +422,7 @@ LOOP_L:
     if (flag == 0) 
         g_tx_ring_busy_count ++;
 #endif
+    if (m == 0 && times > 0)
     {
         int err = 0;
         struct nmreq req;
@@ -430,10 +431,9 @@ LOOP_L:
         strncpy(req.nr_name, src->ifname, sizeof(req.nr_name));
         req.nr_ringid = 0;
         err = ioctl(src->fd, NIOCTXSYNC, &req);
-        if (err)
-            printf("ioctl txsync err. \n");
+        times --;
+        goto LOOP_L;
     }
-    if (flag == 0) goto LOOP_L;
 
     return (m);
 }
