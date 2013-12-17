@@ -1,6 +1,36 @@
 #include <assert.h>
 #include "dns_util.h"
 
+// for test
+#define NM_DEBUG
+
+#ifdef NM_DEBUG
+#include <signal.h>
+static int g_recv_pks_count = 0;
+static int g_send_pks_count = 0;
+
+static int g_recv_sig_count = 0;
+static int g_send_sig_count = 0;
+
+static int g_tx_ring_busy_count = 0;
+static int g_rx_ring_busy_count = 0;
+static int g_recv_non_dns_count = 0;
+
+#define SIGNAL_NUM_PUT SIGUSR1 + 1 
+void handle_signal(int no)
+{
+    if (no == SIGNAL_NUM_PUT)
+    {
+        printf("recv sig:%d\nsend sig:%d\n", g_recv_sig_count, g_send_sig_count);
+        printf("recv pks:%d\nsend pks:%d\n", g_recv_pks_count, g_send_pks_count);
+        printf("recv non dns pks:%d\n", g_recv_non_dns_count);
+        printf("tx ring busy count:%d\n", g_tx_ring_busy_count);
+        printf("rx ring busy count:%d\n", g_rx_ring_busy_count);
+
+    }
+}
+#endif // NM_DEBUG
+
 static int verbose = 0;
 
 #define MAC_ADDR_MAP_ITEMS 8
@@ -19,6 +49,10 @@ static int netmap_add_macaddr(char *smac, char *dmac,
 
     if (g_macaddr_map_inited == 0)
     {
+#ifdef NM_DEBUG
+        signal(SIGNAL_NUM_PUT, handle_signal);
+        printf(" SIG NUM:%d\n", SIGNAL_NUM_PUT);
+#endif
         g_macaddr_map_inited = 1;
         memset(g_macaddr_map, 0x0, MAC_ADDR_MAP_ITEMS * sizeof (macaddr_map_s));
     }
@@ -254,15 +288,21 @@ static int process_recv_ring(struct netmap_ring *rxring,
 
         if (0 != is_dns_query(rxbuf, rs->len)) {
             if (verbose > 1) D("rx[%d] is not DNS query", j);
+#ifdef NM_DEBUG
+            g_recv_non_dns_count ++;
+#endif
             goto NEXT_L; /* best effort! */
         }else {
             if (verbose > 1) D("echo: rx[%d] is DNS query", j);
             parse_addr(rxbuf, rxring->slot[j].len, iomsg);
+#ifdef NM_DEBUG
+            g_recv_pks_count ++;
+#endif
             f = 1;
         }
 
         if (rs->buf_idx < 2) {
-            sleep(2);
+            //sleep(2);
         }
 
         /* copy the packet lenght. */
@@ -311,6 +351,9 @@ static int process_send_ring(struct netmap_ring *txring,
         ts->flags |= NS_BUF_CHANGED;
         m++;
 
+#ifdef NM_DEBUG
+g_send_pks_count ++;
+#endif
         iomsg->n = iomsg->buff_len;
         break;
     }
@@ -325,6 +368,9 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
     int limit = 512;
     struct netmap_ring *rxring;
     u_int m = 0, ri = src->begin;
+#ifdef NM_DEBUG
+    int flag = 0;
+#endif
 
     while (ri < src->end) {
         rxring = NETMAP_RXRING(src->nifp, ri);
@@ -333,10 +379,16 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
             ri++;
             continue;
         }
-
+#ifdef NM_DEBUG
+        flag = 1;
+#endif
         m += process_recv_ring(rxring, limit, iomsg);
         break;
     }
+#ifdef NM_DEBUG
+    if (flag == 0)
+        g_rx_ring_busy_count ++;
+#endif
 
     return (m);
 }
@@ -347,6 +399,12 @@ static int netmap_send_to_ring(struct my_ring *src, io_msg_s *iomsg)
     struct netmap_ring *txring;
     u_int m = 0, ti=src->begin;
 
+#ifdef NM_DEBUG
+    int flag = 0;
+#endif
+LOOP_L:
+    m = 0;
+    ti=src->begin;
     while (ti < src->end) {
         txring = NETMAP_TXRING(src->nifp, ti);
 
@@ -354,9 +412,28 @@ static int netmap_send_to_ring(struct my_ring *src, io_msg_s *iomsg)
             ti++;
             continue;
         }
+#ifdef NM_DEBUG 
+        flag = 1;
+#endif
         m += process_send_ring(txring, limit, iomsg);
         break;
     }
+#ifdef NM_DEBUG 
+    if (flag == 0) 
+        g_tx_ring_busy_count ++;
+#endif
+    {
+        int err = 0;
+        struct nmreq req;
+        bzero(&req, sizeof(req));
+        req.nr_version = NETMAP_API;
+        strncpy(req.nr_name, src->ifname, sizeof(req.nr_name));
+        req.nr_ringid = 0;
+        err = ioctl(src->fd, NIOCTXSYNC, &req);
+        if (err)
+            printf("ioctl txsync err. \n");
+    }
+    if (flag == 0) goto LOOP_L;
 
     return (m);
 }
@@ -368,21 +445,25 @@ int netmap_recv(int fd, io_msg_s *iomsg )
     ring = netmap_getring(fd);
     if (ring == NULL)
         return -1;
-
+    
+#ifdef NM_DEBUG
+    g_recv_sig_count ++;
+#endif
     return netmap_recv_from_ring(ring, iomsg);
 }
 
 
-int netmap_send(int fd, io_msg_s *iomsg ) 
+int netmap_send(int fd, io_msg_s *iomsg) 
 {
     struct my_ring *ring;
 
     ring = netmap_getring(fd);
     if (ring == NULL)
         return -1;
-
+#ifdef NM_DEBUG
+    g_send_sig_count ++;
+#endif
     return netmap_send_to_ring(ring, iomsg);
 }
-
 
 

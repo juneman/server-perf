@@ -91,7 +91,9 @@
 
 #define isc_socket_create isc__socket_create
 // added-by-db 
+#ifdef IO_USE_NETMAP
 #define isc_socket_create_netmap isc__socket_open_netmap
+#endif
 
 #define isc_socket_dup isc__socket_dup
 #define isc_socket_attach isc__socket_attach

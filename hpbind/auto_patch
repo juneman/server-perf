@@ -4,7 +4,7 @@
 ## recover 
 ##
 
-BIND9_DEV_DIR=/home/db/bind-9.9.3-P2
+BIND9_DEV_DIR=/home/db/bind-9.9.3-P2-dubin
 BIND9_BACKUP_DIR=./bind9_origin
 SOURCE_DIR=./storage
 #############################

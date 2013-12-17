@@ -269,6 +269,7 @@ dns_dispatch_getudp_dup(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		    dns_dispatch_t **dispp, dns_dispatch_t *dup);
 
 // added-by-db
+#ifdef IO_USE_NETMAP
 isc_result_t
 dns_dispatch_get_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		    isc_taskmgr_t *taskmgr, isc_sockaddr_t *localaddr, const char * ifname,
@@ -277,6 +278,8 @@ dns_dispatch_get_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		    unsigned int buckets, unsigned int increment,
 		    unsigned int attributes, unsigned int mask,
 		    dns_dispatch_t **dispp, dns_dispatch_t *dup);
+#endif
+
 /*%<
  * Attach to existing dns_dispatch_t if one is found with dns_dispatchmgr_find,
  * otherwise create a new UDP dispatch.

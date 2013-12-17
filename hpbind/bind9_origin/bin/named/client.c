@@ -442,11 +442,7 @@ exit_check(ns_client_t *client) {
 			if (TCP_CLIENT(client)) {
 				client_accept(client);
 			} else
-      {
-        printf("db:%s:%d:client_udprecv called.\n", __FUNCTION__, __LINE__);
-        fflush(stdout);
-        client_udprecv(client);
-      }
+               client_udprecv(client);
 			client->newstate = NS_CLIENTSTATE_MAX;
 			return (ISC_TRUE);
 		}
@@ -605,14 +601,8 @@ client_start(isc_task_t *task, isc_event_t *event) {
 	INSIST(client->nctls == 1);
 	client->nctls--;
 
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
-
 	if (exit_check(client))
 		return;
-
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
 
 	if (TCP_CLIENT(client)) {
 		client_accept(client);
@@ -1443,13 +1433,10 @@ client_request(isc_task_t *task, isc_event_t *event) {
 		client->nreads--;
 	}
 
-  
 	if (exit_check(client))
 		goto cleanup;
-	printf("db:%s:%d: exit_check false\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
 
-  client->state = client->newstate = NS_CLIENTSTATE_WORKING;
+    client->state = client->newstate = NS_CLIENTSTATE_WORKING;
 
 	isc_task_getcurrenttime(task, &client->requesttime);
 	client->now = client->requesttime;
@@ -1931,12 +1918,7 @@ client_request(isc_task_t *task, isc_event_t *event) {
 	switch (client->message->opcode) {
 	case dns_opcode_query:
 		CTRACE("query");
-    printf("db:%s:%d: ns_query_start will call\n", __FUNCTION__, __LINE__);
-    fflush(stdout);
 		ns_query_start(client);
-
-    printf("db:%s:%d: ns_query_start called\n", __FUNCTION__, __LINE__);
-    fflush(stdout);
 		break;
 	case dns_opcode_update:
 		CTRACE("update");
@@ -2378,9 +2360,6 @@ client_udprecv(ns_client_t *client) {
 	isc_region_t r;
 
 	CTRACE("udprecv");
-
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
 
 	r.base = client->recvbuf;
 	r.length = RECV_BUFFER_SIZE;

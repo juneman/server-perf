@@ -331,6 +331,7 @@ static isc_result_t dispatch_createudp(dns_dispatchmgr_t *mgr,
 				       dns_dispatch_t **dispp,
 				       isc_socket_t *dup_socket);
 // added-by-db 
+#ifdef IO_USE_NETMAP
 static isc_result_t dispatch_create_netmap_fd(dns_dispatchmgr_t *mgr,
 				       isc_socketmgr_t *sockmgr,
 				       isc_taskmgr_t *taskmgr,
@@ -339,6 +340,7 @@ static isc_result_t dispatch_create_netmap_fd(dns_dispatchmgr_t *mgr,
 				       unsigned int attributes,
 				       dns_dispatch_t **dispp,
 				       isc_socket_t *dup_socket);
+#endif
 
 static isc_boolean_t destroy_mgr_ok(dns_dispatchmgr_t *mgr);
 static void destroy_mgr(dns_dispatchmgr_t **mgrp);
@@ -1121,6 +1123,10 @@ free_buffer(dns_dispatch_t *disp, void *buf, unsigned int len) {
 		isc_mem_put(disp->mgr->mctx, buf, len);
 		break;
 	case isc_sockettype_udp:
+ // added-by-db
+#ifdef IO_USE_NETMAP
+	case isc_sockettype_netmap:
+#endif
 		LOCK(&disp->mgr->buffer_lock);
 		INSIST(disp->mgr->buffers > 0);
 		INSIST(len == disp->mgr->buffersize);
@@ -1275,8 +1281,6 @@ udp_recv(isc_event_t *ev_in, dns_dispatch_t *disp, dispsocket_t *dispsock) {
 	dispatch_log(disp, LVL(90),
 		     "got packet: requests %d, buffers %d, recvs %d",
 		     disp->requests, disp->mgr->buffers, disp->recv_pending);
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);  
-  fflush(stdout);
 
 	if (dispsock == NULL && ev->ev_type == ISC_SOCKEVENT_RECVDONE) {
 		/*
@@ -1741,14 +1745,17 @@ startrecv(dns_dispatch_t *disp, dispsocket_t *dispsock) {
 		socket = disp->socket;
 	INSIST(socket != NULL);
 
-  printf("db:%s:%d\n", __FUNCTION__, __LINE__);
-  fflush(stdout);
-
 	switch (disp->socktype) {
 		/*
 		 * UDP reads are always maximal.
 		 */
 	case isc_sockettype_udp:
+
+/// added-by-db        
+#ifdef IO_USE_NETMAP        
+	case isc_sockettype_netmap:
+#endif
+
 		region.length = disp->mgr->buffersize;
 		region.base = allocate_udp_buffer(disp);
 		if (region.base == NULL)
@@ -1900,7 +1907,6 @@ destroy_mgr(dns_dispatchmgr_t **mgrp) {
 	isc_mem_detach(&mctx);
 }
 
-
 static isc_result_t
 open_socket(isc_socketmgr_t *mgr, isc_sockaddr_t *local,
 	    unsigned int options, isc_socket_t **sockp,
@@ -1957,6 +1963,7 @@ open_socket(isc_socketmgr_t *mgr, isc_sockaddr_t *local,
 }
 
 /// added-by-db 2013-12-06  
+#ifdef IO_USE_NETMAP
 static isc_result_t
 open_netmap(isc_socketmgr_t *mgr, isc_sockaddr_t *local, const char* ifname,
 	    unsigned int options, isc_socket_t **sockp,
@@ -1973,6 +1980,8 @@ open_netmap(isc_socketmgr_t *mgr, isc_sockaddr_t *local, const char* ifname,
   *sockp = sock;
   return (ISC_R_SUCCESS);
 }
+#endif
+
 
 /*%
  * Create a temporary port list to set the initial default set of dispatch
@@ -2828,7 +2837,6 @@ dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, isc_socket_t *sock,
 	return (result);
 }
 
-
 isc_result_t
 dns_dispatch_getudp_dup(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		    isc_taskmgr_t *taskmgr, isc_sockaddr_t *localaddr,
@@ -2916,6 +2924,7 @@ dns_dispatch_getudp_dup(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 }
 
 // added-by-db : 2013-12-06
+#ifdef IO_USE_NETMAP
 isc_result_t
 dns_dispatch_get_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		    isc_taskmgr_t *taskmgr, isc_sockaddr_t *localaddr, const char *ifname,
@@ -2954,7 +2963,8 @@ dns_dispatch_get_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 	/*
 	 * See if we have a dispatcher that matches.
 	 */
-	if (dup_dispatch == NULL) {
+#if 0
+    if (dup_dispatch == NULL) {
 		result = dispatch_find(mgr, localaddr, attributes, mask, &disp);
 		if (result == ISC_R_SUCCESS) {
 			disp->refcount++;
@@ -2980,7 +2990,7 @@ dns_dispatch_get_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 			return (ISC_R_SUCCESS);
 		}
 	}
-
+#endif
  createudp:
 	/*
 	 * Nope, create one.
@@ -3001,6 +3011,7 @@ dns_dispatch_get_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 
 	return (ISC_R_SUCCESS);
 }
+#endif
 
 isc_result_t
 dns_dispatch_getudp(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
@@ -3289,6 +3300,7 @@ dispatch_createudp(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 }
 
 // added-by-db 2013-12-06
+#ifdef IO_USE_NETMAP
 static isc_result_t
 dispatch_create_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		   isc_taskmgr_t *taskmgr,
@@ -3298,126 +3310,129 @@ dispatch_create_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		   dns_dispatch_t **dispp,
 		   isc_socket_t *dup_socket)
 {
-	isc_result_t result;
-	dns_dispatch_t *disp;
-	isc_socket_t *sock = NULL;
-	int i = 0;
+    isc_result_t result;
+    dns_dispatch_t *disp;
+    isc_socket_t *sock = NULL;
+    int i = 0;
 
-	/*
-	 * dispatch_allocate() checks mgr for us.
-	 */
-	disp = NULL;
-	result = dispatch_allocate(mgr, maxrequests, &disp);
-	if (result != ISC_R_SUCCESS)
-		return (result);
+    /*
+     * dispatch_allocate() checks mgr for us.
+     */
+    disp = NULL;
+    result = dispatch_allocate(mgr, maxrequests, &disp);
+    if (result != ISC_R_SUCCESS)
+        return (result);
 
-  // modify-by-db 2013-12-06
-  result = open_netmap(sockmgr, localaddr, ifname, 0, &sock, NULL);
-  if (sock != NULL)
-    isc_socket_detach(&sock);
-  if (result != ISC_R_SUCCESS)
-    goto deallocate_dispatch;
-  //--------------------
+    // modify-by-db 2013-12-06
+    result = open_netmap(sockmgr, localaddr, ifname, 0, &sock, NULL);
+    if (sock == NULL)
+    {
+        goto deallocate_dispatch;
+    }
 
-  disp->port_table = isc_mem_get(mgr->mctx,
-      sizeof(disp->port_table[0]) *
-      DNS_DISPATCH_PORTTABLESIZE);
-  if (disp->port_table == NULL)
-    goto deallocate_dispatch;
-  for (i = 0; i < DNS_DISPATCH_PORTTABLESIZE; i++)
-    ISC_LIST_INIT(disp->port_table[i]);
+    if (result != ISC_R_SUCCESS)
+        goto deallocate_dispatch;
 
-  result = isc_mempool_create(mgr->mctx, sizeof(dispportentry_t),
-      &disp->portpool);
-  if (result != ISC_R_SUCCESS)
-    goto deallocate_dispatch;
-  isc_mempool_setname(disp->portpool, "disp_portpool");
-  isc_mempool_setfreemax(disp->portpool, 128);
+    disp->port_table = isc_mem_get(mgr->mctx,
+            sizeof(disp->port_table[0]) *
+            DNS_DISPATCH_PORTTABLESIZE);
+    if (disp->port_table == NULL)
+        goto deallocate_dispatch;
+    for (i = 0; i < DNS_DISPATCH_PORTTABLESIZE; i++)
+        ISC_LIST_INIT(disp->port_table[i]);
 
-  disp->socktype = isc_sockettype_netmap;
-	disp->socket = sock;
-	disp->local = *localaddr;
+    result = isc_mempool_create(mgr->mctx, sizeof(dispportentry_t),
+            &disp->portpool);
+    if (result != ISC_R_SUCCESS)
+        goto deallocate_dispatch;
+    isc_mempool_setname(disp->portpool, "disp_portpool");
+    isc_mempool_setfreemax(disp->portpool, 128);
 
-	if ((attributes & DNS_DISPATCHATTR_EXCLUSIVE) != 0)
-		disp->ntasks = MAX_INTERNAL_TASKS;
-	else
-		disp->ntasks = 1;
-	for (i = 0; i < disp->ntasks; i++) {
-		disp->task[i] = NULL;
-		result = isc_task_create(taskmgr, 0, &disp->task[i]);
-		if (result != ISC_R_SUCCESS) {
-			while (--i >= 0) {
-				isc_task_shutdown(disp->task[i]);
-				isc_task_detach(&disp->task[i]);
-			}
-			goto kill_socket;
-		}
-		isc_task_setname(disp->task[i], "nmdispatch", disp);
-	}
+    disp->socktype = isc_sockettype_netmap;
+    disp->socket = sock;
+    disp->local = *localaddr;
 
-	disp->ctlevent = isc_event_allocate(mgr->mctx, disp,
-					    DNS_EVENT_DISPATCHCONTROL,
-					    destroy_disp, disp,
-					    sizeof(isc_event_t));
-	if (disp->ctlevent == NULL) {
-		result = ISC_R_NOMEMORY;
-		goto kill_task;
-	}
+    if ((attributes & DNS_DISPATCHATTR_EXCLUSIVE) != 0)
+        disp->ntasks = MAX_INTERNAL_TASKS;
+    else
+        disp->ntasks = 1;
+    for (i = 0; i < disp->ntasks; i++) {
+        disp->task[i] = NULL;
+        result = isc_task_create(taskmgr, 0, &disp->task[i]);
+        if (result != ISC_R_SUCCESS) {
+            while (--i >= 0) {
+                isc_task_shutdown(disp->task[i]);
+                isc_task_detach(&disp->task[i]);
+            }
+            goto kill_socket;
+        }
+        isc_task_setname(disp->task[i], "nmdispatch", disp);
+    }
 
-	disp->sepool = NULL;
-	if (isc_mempool_create(mgr->mctx, sizeof(isc_socketevent_t),
-			       &disp->sepool) != ISC_R_SUCCESS)
-	{
-		result = ISC_R_NOMEMORY;
-		goto kill_ctlevent;
-	}
+    disp->ctlevent = isc_event_allocate(mgr->mctx, disp,
+            DNS_EVENT_DISPATCHCONTROL,
+            destroy_disp, disp,
+            sizeof(isc_event_t));
+    if (disp->ctlevent == NULL) {
+        result = ISC_R_NOMEMORY;
+        goto kill_task;
+    }
 
-	result = isc_mutex_init(&disp->sepool_lock);
-	if (result != ISC_R_SUCCESS)
-		goto kill_sepool;
+    disp->sepool = NULL;
+    if (isc_mempool_create(mgr->mctx, sizeof(isc_socketevent_t),
+                &disp->sepool) != ISC_R_SUCCESS)
+    {
+        result = ISC_R_NOMEMORY;
+        goto kill_ctlevent;
+    }
 
-	isc_mempool_setname(disp->sepool, "disp_sepool");
-	isc_mempool_setmaxalloc(disp->sepool, 32768);
-	isc_mempool_setfreemax(disp->sepool, 32768);
-	isc_mempool_associatelock(disp->sepool, &disp->sepool_lock);
-	isc_mempool_setfillcount(disp->sepool, 16);
+    result = isc_mutex_init(&disp->sepool_lock);
+    if (result != ISC_R_SUCCESS)
+        goto kill_sepool;
 
-	attributes &= ~DNS_DISPATCHATTR_TCP;
-	attributes |= DNS_DISPATCHATTR_UDP;
-	disp->attributes = attributes;
+    isc_mempool_setname(disp->sepool, "disp_sepool");
+    isc_mempool_setmaxalloc(disp->sepool, 32768);
+    isc_mempool_setfreemax(disp->sepool, 32768);
+    isc_mempool_associatelock(disp->sepool, &disp->sepool_lock);
+    isc_mempool_setfillcount(disp->sepool, 16);
 
-	/*
-	 * Append it to the dispatcher list.
-	 */
-	ISC_LIST_APPEND(mgr->list, disp, link);
+    attributes &= ~DNS_DISPATCHATTR_TCP;
+    attributes |= DNS_DISPATCHATTR_UDP;
+    disp->attributes = attributes;
 
-	mgr_log(mgr, LVL(90), "created UDP dispatcher %p", disp);
-	dispatch_log(disp, LVL(90), "created task %p", disp->task[0]); /* XXX */
-	if (disp->socket != NULL)
-		dispatch_log(disp, LVL(90), "created socket %p", disp->socket);
+    /*
+     * Append it to the dispatcher list.
+     */
+    ISC_LIST_APPEND(mgr->list, disp, link);
 
-	*dispp = disp;
+    mgr_log(mgr, LVL(90), "created UDP dispatcher %p", disp);
+    dispatch_log(disp, LVL(90), "created task %p", disp->task[0]); /* XXX */
+    if (disp->socket != NULL)
+        dispatch_log(disp, LVL(90), "created socket %p", disp->socket);
 
-	return (result);
+    *dispp = disp;
 
-	/*
-	 * Error returns.
-	 */
- kill_sepool:
-	isc_mempool_destroy(&disp->sepool);
- kill_ctlevent:
-	isc_event_free(&disp->ctlevent);
- kill_task:
-	for (i = 0; i < disp->ntasks; i++)
-		isc_task_detach(&disp->task[i]);
- kill_socket:
-	if (disp->socket != NULL)
-		isc_socket_detach(&disp->socket);
- deallocate_dispatch:
-	dispatch_free(&disp);
+    return (result);
 
-	return (result);
+    /*
+     * Error returns.
+     */
+kill_sepool:
+    isc_mempool_destroy(&disp->sepool);
+kill_ctlevent:
+    isc_event_free(&disp->ctlevent);
+kill_task:
+    for (i = 0; i < disp->ntasks; i++)
+        isc_task_detach(&disp->task[i]);
+kill_socket:
+    if (disp->socket != NULL)
+        isc_socket_detach(&disp->socket);
+deallocate_dispatch:
+    dispatch_free(&disp);
+
+    return (result);
 }
+#endif
 
 void
 dns_dispatch_attach(dns_dispatch_t *disp, dns_dispatch_t **dispp) {

@@ -1,50 +1,14 @@
-/*
- * Copyright (C) 2012 Luigi Rizzo. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *   1. Redistributions of source code must retain the above copyright
- *      notice, this list of conditions and the following disclaimer.
- *   2. Redistributions in binary form must reproduce the above copyright
- *      notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
-
-/*
- * $FreeBSD$
- * $Id$
- *
- * utilities to use netmap devices.
- * This does the basic functions of opening a device and issuing
- * ioctls()
- */
 #include <assert.h>
 #include "nm_util.h"
 
-int verbose = 0;
+static int verbose = 0;
 
 int
 nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
 {
 	struct ifreq ifr;
 	int error;
-#if defined( __FreeBSD__ ) || defined (__APPLE__)
-	int fd = me->fd; 
-#endif
-#ifdef linux 
+
 	struct ethtool_value eval;
 	int fd; 
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -52,59 +16,35 @@ nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
 		printf("Error: cannot get device control socket.\n");
 		return -1;
 	}
-#endif /* linux */
 
 	(void)subcmd;	// unused
 	bzero(&ifr, sizeof(ifr));
 	strncpy(ifr.ifr_name, me->ifname, sizeof(ifr.ifr_name));
 	switch (what) {
 	case SIOCSIFFLAGS:
-#ifndef __APPLE__
 		ifr.ifr_flagshigh = me->if_flags >> 16;
-#endif
 		ifr.ifr_flags = me->if_flags & 0xffff;
 		break;
 
-#if defined( __FreeBSD__ )
-	case SIOCSIFCAP:
-		ifr.ifr_reqcap = me->if_reqcap;
-		ifr.ifr_curcap = me->if_curcap;
-		break;
-#endif
-#ifdef linux
 	case SIOCETHTOOL:
 		eval.cmd = subcmd;
 		eval.data = 0;
 		ifr.ifr_data = (caddr_t)&eval;
 		break;
-#endif /* linux */
 	}
 	error = ioctl(fd, what, &ifr);
 	if (error)
 		goto done;
 	switch (what) {
 	case SIOCGIFFLAGS:
-#ifndef __APPLE__
 		me->if_flags = (ifr.ifr_flagshigh << 16) |
 			(0xffff & ifr.ifr_flags);
-#endif
 		if (verbose)
 			D("flags are 0x%x", me->if_flags);
 		break;
-
-#if defined( __FreeBSD__ )
-	case SIOCGIFCAP:
-		me->if_reqcap = ifr.ifr_reqcap;
-		me->if_curcap = ifr.ifr_curcap;
-		if (verbose)
-			D("curcap are 0x%x", me->if_curcap);
-		break;
-#endif /* __FreeBSD__ */
 	}
 done:
-#ifdef linux
 	close(fd);
-#endif
 	if (error)
 		D("ioctl error %d %lu", error, what);
 	return error;
@@ -173,10 +113,10 @@ netmap_open(struct my_ring *me, int ringid, int promisc)
 		 * - tx-checksumming
 		 * XXX check how to set back the caps.
 		 */
-		nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SGSO);
-		nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STSO);
-		nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SRXCSUM);
-		nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STXCSUM);
+	//	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SGSO);
+	//	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STSO);
+	//	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SRXCSUM);
+	//	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STXCSUM);
 	}
 
 	me->nifp = NETMAP_IF(me->mem, req.nr_offset);
@@ -252,7 +192,7 @@ typedef struct _netmap_storage_s_ {
   int fd;
 }netmap_storage_s;
 
-#define NM_MAX_FDS 256
+#define NM_MAX_FDS 32
 static netmap_storage_s g_storage[NM_MAX_FDS];
 
 static int g_inited = 0;
@@ -290,7 +230,39 @@ int netmap_getfd(const char *ifname)
   strncpy(sto->ifname, ifname, 31);
   sto->ring.ifname = sto->ifname;
 
-  sto->fd = netmap_open(&sto->ring, 0, 0);
+  netmap_open(&sto->ring, 0, 0);
+  sto->fd = sto->ring.fd;
   return sto->fd;
+}
+
+int netmap_closefd(int fd)
+{
+    int index = 0;
+    netmap_storage_s *sto;
+    for (index = 0; index < NM_MAX_FDS; index ++ ) 
+    {
+        sto = &g_storage[index];
+        if (sto->fd == fd)
+        {
+            netmap_close(&sto->ring);
+            return 0;
+        }
+    }
+    
+    return -1;
+}
+
+struct my_ring* netmap_getring(int fd)
+{
+    int index = 0;
+    netmap_storage_s *sto;
+    for (index = 0; index < NM_MAX_FDS; index ++ ) 
+    {
+        sto = &g_storage[index];
+        if (sto->fd == fd)
+            return &sto->ring;
+    }
+    
+    return NULL;
 }
 

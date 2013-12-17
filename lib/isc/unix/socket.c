@@ -1097,6 +1097,9 @@ wakeup_socket(isc__socketmgr_t *manager, int fd, int msg) {
 		(void)unwatch_fd(manager, fd, SELECT_POKE_READ);
 		(void)unwatch_fd(manager, fd, SELECT_POKE_WRITE);
 		(void)close(fd);
+#ifdef IO_USE_NETMAP  
+        (void)netmap_closefd(fd);
+#endif
 		return;
 	}
 
@@ -2071,7 +2074,7 @@ doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev)
 
     netmap_send(sock->fd, &iomsg);
 
-	/*
+   	/*
 	 * If we write less than we expected, update counters, poke.
 	 */
 	dev->n += iomsg.n;
@@ -2868,7 +2871,7 @@ again:
                 {
                     // Hahaaa, call netmap function.....
                     sock->fd = netmap_getfd(ifname);
-                    printf("netmap open fd:%d on %s\n", sock->fd, ifname);
+                    printf("\t netmap open fd:%d on %s\n", sock->fd, ifname);
                 }
 
                 break;
@@ -3083,12 +3086,7 @@ socket_open_netmap(isc_socketmgr_t *manager0, int pf, const char *ifname,
 			(pf == AF_INET) ? udp4statsindex : udp6statsindex;
 		break;
 	case isc_sockettype_tcp:
-		sock->statsindex =
-			(pf == AF_INET) ? tcp4statsindex : tcp6statsindex;
-		break;
 	case isc_sockettype_unix:
-		sock->statsindex = unixstatsindex;
-		break;
 	default:
 		INSIST(0);
 	}
@@ -5119,6 +5117,10 @@ socket_recv(isc__socket_t *sock, isc_socketevent_t *dev, isc_task_t *task,
 
 	if (sock->type == isc_sockettype_udp) {
 		io_state = doio_recv(sock, dev);
+#ifdef IO_USE_NETMAP
+    } else if (sock->type == isc_sockettype_netmap) {
+		io_state = doio_recv(sock, dev);
+#endif
 	} else {
 		LOCK(&sock->lock);
 		have_lock = ISC_TRUE;
@@ -5212,6 +5214,10 @@ isc__socket_recvv(isc_socket_t *sock0, isc_bufferlist_t *buflist,
 	 */
 	if (sock->type == isc_sockettype_udp)
 		dev->minimum = 1;
+#ifdef IO_USE_NETMAP
+    else if (sock->type == isc_sockettype_netmap)
+    {	dev->minimum = 1;}
+#endif
 	else {
 		if (minimum == 0)
 			dev->minimum = iocount;
@@ -5275,6 +5281,12 @@ isc__socket_recv2(isc_socket_t *sock0, isc_region_t *region,
 	 */
 	if (sock->type == isc_sockettype_udp)
 		event->minimum = 1;
+#ifdef IO_USE_NETMAP
+    else if (sock->type == isc_sockettype_netmap)
+    {	
+        event->minimum = 1;
+    }
+#endif
 	else {
 		if (minimum == 0)
 			event->minimum = region->length;
@@ -5480,7 +5492,8 @@ isc__socket_sendto2(isc_socket_t *sock0, isc_region_t *region,
 	REQUIRE((flags & ~(ISC_SOCKFLAG_IMMEDIATE|ISC_SOCKFLAG_NORETRY)) == 0);
 	if ((flags & ISC_SOCKFLAG_NORETRY) != 0)
 #ifdef IO_USE_NETMAP	
-        REQUIRE(sock->type == isc_sockettype_netmap);
+        REQUIRE((sock->type == isc_sockettype_netmap) 
+                || (sock->type == isc_sockettype_udp));
 #else
 		REQUIRE(sock->type == isc_sockettype_udp);
 #endif
@@ -5961,6 +5974,12 @@ isc__socket_connect(isc_socket_t *sock0, isc_sockaddr_t *addr,
 			cc = 0;
 			goto success;
 		}
+#ifdef IO_USE_NETMAP
+		if (sock->type == isc_sockettype_netmap && errno == EINPROGRESS) {
+			cc = 0;
+			goto success;
+		}
+#endif
 		if (SOFT_ERROR(errno) || errno == EINPROGRESS)
 			goto queue;
 
@@ -6564,6 +6583,10 @@ _socktype(isc_sockettype_t type)
 {
 	if (type == isc_sockettype_udp)
 		return ("udp");
+#ifdef IO_USE_NETMAP
+    else if (type == isc_sockettype_netmap)
+        return ("netmap");
+#endif
 	else if (type == isc_sockettype_tcp)
 		return ("tcp");
 	else if (type == isc_sockettype_unix)

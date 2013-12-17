@@ -115,8 +115,8 @@ netmap_open(struct my_ring *me, int ringid, int promisc)
 		 */
 	//	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SGSO);
 	//	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STSO);
-//		nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SRXCSUM);
-//		nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STXCSUM);
+	//	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SRXCSUM);
+	//	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STXCSUM);
 	}
 
 	me->nifp = NETMAP_IF(me->mem, req.nr_offset);
@@ -233,6 +233,23 @@ int netmap_getfd(const char *ifname)
   netmap_open(&sto->ring, 0, 0);
   sto->fd = sto->ring.fd;
   return sto->fd;
+}
+
+int netmap_closefd(int fd)
+{
+    int index = 0;
+    netmap_storage_s *sto;
+    for (index = 0; index < NM_MAX_FDS; index ++ ) 
+    {
+        sto = &g_storage[index];
+        if (sto->fd == fd)
+        {
+            netmap_close(&sto->ring);
+            return 0;
+        }
+    }
+    
+    return -1;
 }
 
 struct my_ring* netmap_getring(int fd)

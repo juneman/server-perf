@@ -114,11 +114,9 @@ struct my_ring {
 	uint32_t if_reqcap;
 	uint32_t if_curcap;
 };
-int netmap_open(struct my_ring *me, int ringid, int promisc);
-int netmap_close(struct my_ring *me);
-int nm_do_ioctl(struct my_ring *me, u_long what, int subcmd);
 
 int netmap_getfd(const char *ifname);
+int netmap_closefd(int fd);
 struct my_ring *netmap_getring(int fd);
 
 #endif /* _NM_UTIL_H */
