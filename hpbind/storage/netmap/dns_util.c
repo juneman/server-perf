@@ -1,5 +1,8 @@
 #include <assert.h>
+#include <pthread.h>
 #include "dns_util.h"
+
+
 
 // for test
 #define NM_DEBUG
@@ -32,6 +35,9 @@ void handle_signal(int no)
 #endif // NM_DEBUG
 
 static int verbose = 0;
+
+static pthread_mutex_t g_recv_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_send_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define MAC_ADDR_MAP_ITEMS 8
 static macaddr_map_s g_macaddr_map[MAC_ADDR_MAP_ITEMS];
@@ -441,29 +447,41 @@ LOOP_L:
 int netmap_recv(int fd, io_msg_s *iomsg ) 
 {
     struct my_ring *ring;
+    int ret = 0;
 
     ring = netmap_getring(fd);
     if (ring == NULL)
         return -1;
-    
+
+    pthread_mutex_lock(&g_recv_mutex);
 #ifdef NM_DEBUG
     g_recv_sig_count ++;
 #endif
-    return netmap_recv_from_ring(ring, iomsg);
+    ret = netmap_recv_from_ring(ring, iomsg);
+    pthread_mutex_unlock(&g_recv_mutex);
+
+    return ret;
 }
 
 
 int netmap_send(int fd, io_msg_s *iomsg) 
 {
     struct my_ring *ring;
+    int ret = 0;
 
     ring = netmap_getring(fd);
     if (ring == NULL)
         return -1;
+
+    pthread_mutex_lock(&g_send_mutex);
+
 #ifdef NM_DEBUG
     g_send_sig_count ++;
 #endif
-    return netmap_send_to_ring(ring, iomsg);
+    ret = netmap_send_to_ring(ring, iomsg);
+    pthread_mutex_unlock(&g_send_mutex);
+
+    return ret;
 }
 
 
