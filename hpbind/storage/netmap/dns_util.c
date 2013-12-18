@@ -2,10 +2,8 @@
 #include <pthread.h>
 #include "dns_util.h"
 
-
-
 // for test
-#define NM_DEBUG
+//#define NM_DEBUG
 
 #ifdef NM_DEBUG
 #include <signal.h>
@@ -36,8 +34,13 @@ void handle_signal(int no)
 
 static int verbose = 0;
 
-static pthread_mutex_t g_recv_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t g_send_mutex = PTHREAD_MUTEX_INITIALIZER;
+#ifdef NM_HAVE_G_LOCK
+static pthread_mutex_t g_recv_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_send_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
+static pthread_mutex_t g_init_macaddr_lock = PTHREAD_MUTEX_INITIALIZER;
+static int g_macaddr_inited = 0;
 
 #define MAC_ADDR_MAP_ITEMS 8
 static macaddr_map_s g_macaddr_map[MAC_ADDR_MAP_ITEMS];
@@ -52,17 +55,6 @@ static int netmap_add_macaddr(char *smac, char *dmac,
         unsigned short qid)
 {
     int i = 0;
-
-    if (g_macaddr_map_inited == 0)
-    {
-#ifdef NM_DEBUG
-        signal(SIGNAL_NUM_PUT, handle_signal);
-        printf(" SIG NUM:%d\n", SIGNAL_NUM_PUT);
-#endif
-        g_macaddr_map_inited = 1;
-        memset(g_macaddr_map, 0x0, MAC_ADDR_MAP_ITEMS * sizeof (macaddr_map_s));
-    }
-
     macaddr_map_s *m = &g_macaddr_map[i];
 
     for (i = 0; i < MAC_ADDR_MAP_ITEMS; i++ ) 
@@ -374,6 +366,11 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
     int limit = 512;
     struct netmap_ring *rxring;
     u_int m = 0, ri = src->begin;
+
+#ifdef NM_HAVE_RING_LOCK
+    pthread_mutex_t *lock = NULL; 
+#endif
+
 #ifdef NM_DEBUG
     int flag = 0;
 #endif
@@ -381,16 +378,44 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
     while (ri < src->end) {
         rxring = NETMAP_RXRING(src->nifp, ri);
 
-        if (rxring->avail == 0) {
-            ri++;
+#ifdef NM_HAVE_RING_LOCK
+        lock = (pthread_mutex_t*)rxring->lock;
+
+        if (lock != NULL && pthread_mutex_trylock(lock) == EBUSY)
+        {
+            ri ++;
             continue;
         }
+#endif
+
+        if (rxring->avail == 0) 
+        {
+#ifdef NM_HAVE_RING_LOCK
+            if (lock != NULL)
+            {
+                pthread_mutex_unlock(lock);
+            }
+#endif
+            ri ++;
+            continue;
+        }
+
+        m = process_recv_ring(rxring, limit, iomsg);
+
+#ifdef NM_HAVE_RING_LOCK
+        if (lock != NULL)
+        {
+            pthread_mutex_unlock(lock);
+        }
+#endif
+
 #ifdef NM_DEBUG
         flag = 1;
 #endif
-        m += process_recv_ring(rxring, limit, iomsg);
+
         break;
     }
+
 #ifdef NM_DEBUG
     if (flag == 0)
         g_rx_ring_busy_count ++;
@@ -405,6 +430,10 @@ static int netmap_send_to_ring(struct my_ring *src, io_msg_s *iomsg)
     struct netmap_ring *txring;
     u_int m = 0, times = 1, ti=src->begin;
 
+#ifdef NM_HAVE_RING_LOCK
+    pthread_mutex_t *lock = NULL; 
+#endif
+
 #ifdef NM_DEBUG
     int flag = 0;
 #endif
@@ -413,15 +442,42 @@ LOOP_L:
     ti=src->begin;
     while (ti < src->end) {
         txring = NETMAP_TXRING(src->nifp, ti);
-
-        if (txring->avail == 0) {
-            ti++;
+ 
+#ifdef NM_HAVE_RING_LOCK
+        lock = (pthread_mutex_t*)txring->lock;
+       
+        if (lock != NULL && pthread_mutex_trylock(lock) == EBUSY)
+        {
+            ti ++;
             continue;
         }
+#endif 
+
+        if (txring->avail == 0) 
+        {
+#ifdef NM_HAVE_RING_LOCK
+            if (lock != NULL)
+            {
+                pthread_mutex_unlock(lock);
+            }
+#endif
+            ti++;
+            continue;
+        }   
+
+        m = process_send_ring(txring, limit, iomsg);
+
+#ifdef NM_HAVE_RING_LOCK
+        if (lock != NULL)
+        {
+            pthread_mutex_unlock(lock);
+        }
+#endif
+
 #ifdef NM_DEBUG 
         flag = 1;
 #endif
-        m += process_send_ring(txring, limit, iomsg);
+
         break;
     }
 #ifdef NM_DEBUG 
@@ -453,12 +509,23 @@ int netmap_recv(int fd, io_msg_s *iomsg )
     if (ring == NULL)
         return -1;
 
-    pthread_mutex_lock(&g_recv_mutex);
+#if  defined(NM_HAVE_MRING_LOCK)
+    pthread_mutex_lock(&ring->rxlock);
+#elif defined(NM_HAVE_G_LOCK)
+    pthread_mutex_lock(&g_recv_lock);
+#endif
+
 #ifdef NM_DEBUG
     g_recv_sig_count ++;
 #endif
+
     ret = netmap_recv_from_ring(ring, iomsg);
-    pthread_mutex_unlock(&g_recv_mutex);
+
+#if defined(NM_HAVE_MRING_LOCK)
+    pthread_mutex_unlock(&ring->rxlock);
+#elif defined(NM_HAVE_G_LOCK)
+    pthread_mutex_unlock(&g_recv_lock);
+#endif
 
     return ret;
 }
@@ -473,15 +540,42 @@ int netmap_send(int fd, io_msg_s *iomsg)
     if (ring == NULL)
         return -1;
 
-    pthread_mutex_lock(&g_send_mutex);
+#if defined(NM_HAVE_MRING_LOCK)
+    pthread_mutex_lock(&ring->txlock);
+#elif defined(NM_HAVE_G_LOCK)
+    pthread_mutex_lock(&g_send_lock);
+#endif
 
 #ifdef NM_DEBUG
     g_send_sig_count ++;
 #endif
+
     ret = netmap_send_to_ring(ring, iomsg);
-    pthread_mutex_unlock(&g_send_mutex);
+
+#if  defined(NM_HAVE_MRING_LOCK)
+    pthread_mutex_unlock(&ring->txlock);
+#elif defined(NM_HAVE_G_LOCK)
+     pthread_mutex_unlock(&g_send_lock);
+#endif
 
     return ret;
 }
 
+int netmap_init()
+{
+    if (pthread_mutex_trylock(&g_init_macaddr_lock) == EBUSY)
+        return 0;
+    
+    if (g_macaddr_inited == 1) return 0;
+    g_macaddr_inited = 1;
 
+#ifdef NM_DEBUG
+    signal(SIGNAL_NUM_PUT, handle_signal);
+    printf(" SIG NUM:%d\n", SIGNAL_NUM_PUT);
+#endif
+    memset(g_macaddr_map, 0x0, MAC_ADDR_MAP_ITEMS * sizeof (macaddr_map_s));
+
+    pthread_mutex_unlock(&g_init_macaddr_lock);
+    
+    return 0;
+}

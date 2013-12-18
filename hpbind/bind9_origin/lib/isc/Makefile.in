@@ -27,7 +27,6 @@ CINCLUDES =	-I${srcdir}/unix/include \
 		-I${srcdir}/@ISC_THREAD_DIR@/include \
 		-I${srcdir}/@ISC_ARCH_DIR@/include \
 		-I./include \
-		-I${top_srcdir}/netmap \
 		-I${srcdir}/include @ISC_OPENSSL_INC@
 CDEFINES =	@USE_OPENSSL@
 CWARNINGS =
@@ -38,9 +37,7 @@ UNIXOBJS =	@ISC_ISCIPV6_O@ \
 		unix/errno2result.@O@ unix/file.@O@ unix/fsaccess.@O@ \
 		unix/interfaceiter.@O@ unix/keyboard.@O@ unix/net.@O@ \
 		unix/os.@O@ unix/resource.@O@ unix/socket.@O@ unix/stdio.@O@ \
-		unix/stdtime.@O@ unix/strerror.@O@ unix/syslog.@O@ unix/time.@O@ \
-		${top_srcdir}/netmap/nm_util.@O@ \
-		${top_srcdir}/netmap/dns_util.@O@
+		unix/stdtime.@O@ unix/strerror.@O@ unix/syslog.@O@ unix/time.@O@
 
 NLSOBJS =	nls/msgcat.@O@
 

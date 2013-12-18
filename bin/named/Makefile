@@ -96,7 +96,8 @@ DLZDRIVER_LIBS =
 CINCLUDES =	-I${srcdir}/include -I${srcdir}/unix/include -I. \
 		${LWRES_INCLUDES} ${DNS_INCLUDES} ${BIND9_INCLUDES} \
 		${ISCCFG_INCLUDES} ${ISCCC_INCLUDES} ${ISC_INCLUDES} \
-		${DLZDRIVER_INCLUDES} ${DBDRIVER_INCLUDES} 
+		${DLZDRIVER_INCLUDES} ${DBDRIVER_INCLUDES}  \
+		-I${top_srcdir}/netmap
 
 CDEFINES =        -DOPENSSL
 
@@ -140,7 +141,8 @@ OBJS =		builtin.o client.o config.o control.o \
 		zoneconf.o \
 		lwaddr.o lwresd.o lwdclient.o lwderror.o lwdgabn.o \
 		lwdgnba.o lwdgrbn.o lwdnoop.o lwsearch.o \
-		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS}
+		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS} \
+		${top_srcdir}/netmap/dns_util.o
 
 UOBJS =		unix/os.o unix/dlz_dlopen_driver.o
 

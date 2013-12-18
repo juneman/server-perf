@@ -34,6 +34,11 @@
 #include <named/log.h>
 #include <named/interfacemgr.h>
 
+// added-by-db
+#ifdef IO_USE_NETMAP
+#include "dns_util.h"
+#endif
+
 #define IFMGR_MAGIC			ISC_MAGIC('I', 'F', 'M', 'G')
 #define NS_INTERFACEMGR_VALID(t)	ISC_MAGIC_VALID(t, IFMGR_MAGIC)
 
@@ -796,6 +801,11 @@ do_scan(ns_interfacemgr_t *mgr, ns_listenlist_t *ext_listen,
 			goto cleanup_iter;
 		clearlistenon(mgr);
 	}
+
+// added-by-db
+#ifdef IO_USE_NETMAP
+    netmap_init();
+#endif
 
 	for (result = isc_interfaceiter_first(iter);
 	     result == ISC_R_SUCCESS;

@@ -27,8 +27,4 @@
  */
 #define BIND9 1
 
-// added-by-db
-#define IO_USE_NETMAP 1 // if set ,enable netmap module; 
-//#define ISC_PLATFORM_HAVE_POLL 1 // if set , use poll
-
 #endif /* ISC_BIND9_H */

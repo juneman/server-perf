@@ -24,8 +24,7 @@ mkdir -p ${BIND9_BACKUP_DIR}/lib/isc/include/isc/
 mkdir -p ${BIND9_BACKUP_DIR}/lib/isc/unix/
 mkdir -p ${BIND9_BACKUP_DIR}/netmap/net
 
-cp -v ${BIND9_DEV_DIR}/bin/named/client.c ${BIND9_BACKUP_DIR}/bin/named/
-cp -v ${BIND9_DEV_DIR}/bin/named/interfacemgr.c ${BIND9_BACKUP_DIR}/bin/named/
+cp -v ${BIND9_DEV_DIR}/bin/named/{client.c,interfacemgr.c,Makefile.in} ${BIND9_BACKUP_DIR}/bin/named/
 cp -v ${BIND9_DEV_DIR}/lib/dns/include/dns/dispatch.h ${BIND9_BACKUP_DIR}/lib/dns/include/dns/
 cp -v ${BIND9_DEV_DIR}/lib/dns/dispatch.c ${BIND9_BACKUP_DIR}/lib/dns/
 cp -v ${BIND9_DEV_DIR}/lib/isc/include/isc/{bind9.h,namespace.h,socket.h} ${BIND9_BACKUP_DIR}/lib/isc/include/isc/
@@ -45,7 +44,7 @@ echo "patch netmap code ...."
 rm -rf ${BIND9_DEV_DIR}/netmap
 mkdir -p ${BIND9_DEV_DIR}/netmap/net
 
-cp -vf ${SOURCE_DIR}/bin/named/{interfacemgr.c,client.c} ${BIND9_DEV_DIR}/bin/named/
+cp -vf ${SOURCE_DIR}/bin/named/{interfacemgr.c,client.c,Makefile.in} ${BIND9_DEV_DIR}/bin/named/
 cp -vf ${SOURCE_DIR}/lib/dns/include/dns/dispatch.h ${BIND9_DEV_DIR}/lib/dns/include/dns/ 
 cp -vf ${SOURCE_DIR}/lib/dns/dispatch.c ${BIND9_DEV_DIR}/lib/dns/ 
 cp -vf ${SOURCE_DIR}/lib/isc/include/isc/{bind9.h,namespace.h,socket.h} ${BIND9_DEV_DIR}/lib/isc/include/isc/ 

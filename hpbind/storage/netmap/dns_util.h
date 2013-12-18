@@ -50,6 +50,7 @@ typedef struct _macaddr_map_s_ {
     char pad2[2];
 }macaddr_map_s;
 
+int netmap_init();
 int netmap_recv(int fd, io_msg_s *iomsg);
 int netmap_send(int fd, io_msg_s *iomsg);
 

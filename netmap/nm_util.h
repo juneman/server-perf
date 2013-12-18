@@ -97,6 +97,10 @@ pkt_copy(const void *_src, void *_dst, int l)
 	}
 }
 
+//#define NM_HAVE_G_LOCK 
+//#define NM_HAVE_MRING_LOCK
+#define NM_HAVE_RING_LOCK
+
 /*
  * info on a ring we handle
  */
@@ -109,6 +113,11 @@ struct my_ring {
 	u_int begin, end;               /* first..last+1 rings to check */
 	struct netmap_if *nifp;
 	struct netmap_ring *tx, *rx;    /* shortcuts */
+
+#ifdef NM_HAVE_MRING_LOCK    
+    pthread_mutex_t rxlock;
+    pthread_mutex_t txlock;
+#endif
 
 	uint32_t if_flags;
 	uint32_t if_reqcap;

@@ -11,8 +11,7 @@ mkdir -p ${TARGET_DIR}/lib/isc/include/isc/
 mkdir -p ${TARGET_DIR}/lib/isc/unix/
 mkdir -p ${TARGET_DIR}/netmap/net
 
-cp -v ${BIND9_DEV_DIR}/bin/named/client.c ${TARGET_DIR}/bin/named/
-cp -v ${BIND9_DEV_DIR}/bin/named/interfacemgr.c ${TARGET_DIR}/bin/named/
+cp -v ${BIND9_DEV_DIR}/bin/named/{client.c,interfacemgr.c,Makefile.in} ${TARGET_DIR}/bin/named/
 cp -v ${BIND9_DEV_DIR}/lib/dns/include/dns/dispatch.h ${TARGET_DIR}/lib/dns/include/dns/
 cp -v ${BIND9_DEV_DIR}/lib/dns/dispatch.c ${TARGET_DIR}/lib/dns/
 cp -v ${BIND9_DEV_DIR}/lib/isc/include/isc/{bind9.h,namespace.h,socket.h} ${TARGET_DIR}/lib/isc/include/isc/
