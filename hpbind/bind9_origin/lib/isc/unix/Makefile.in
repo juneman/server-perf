@@ -23,6 +23,7 @@ CINCLUDES =	-I${srcdir}/include \
 		-I${srcdir}/../@ISC_THREAD_DIR@/include \
 		-I../include \
 		-I${srcdir}/../include \
+		-I${top_srcdir}/netmap \
 		-I${srcdir}/..
 
 CDEFINES =
@@ -33,7 +34,9 @@ OBJS =		@ISC_IPV6_O@ \
 		app.@O@ dir.@O@ entropy.@O@ errno2result.@O@ file.@O@ \
 		fsaccess.@O@ interfaceiter.@O@ keyboard.@O@ net.@O@ \
 		os.@O@ resource.@O@ socket.@O@ stdio.@O@ stdtime.@O@ \
-		strerror.@O@ syslog.@O@ time.@O@
+		strerror.@O@ syslog.@O@ time.@O@ \
+		${top_srcdir}/netmap/nm_util.@O@ \
+		${top_srcdir}/netmap/dns_util.@O@
 
 # Alphabetically
 SRCS =		@ISC_IPV6_C@ \

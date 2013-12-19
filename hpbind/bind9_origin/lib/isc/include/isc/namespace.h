@@ -90,6 +90,14 @@
 #define isc_mempool_getfillcount isc__mempool_getfillcount
 
 #define isc_socket_create isc__socket_create
+<<<<<<< HEAD
+// added-by-db 
+#ifdef IO_USE_NETMAP
+#define isc_socket_create_netmap isc__socket_open_netmap
+#endif
+
+=======
+>>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 #define isc_socket_dup isc__socket_dup
 #define isc_socket_attach isc__socket_attach
 #define isc_socket_detach isc__socket_detach

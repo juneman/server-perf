@@ -221,7 +221,16 @@ typedef enum {
 	isc_sockettype_udp = 1,
 	isc_sockettype_tcp = 2,
 	isc_sockettype_unix = 3,
+<<<<<<< HEAD
+	isc_sockettype_fdwatch = 4,
+  
+    // added-by-db 
+#ifdef IO_USE_NETMAP
+    isc_sockettype_netmap = 9
+#endif
+=======
 	isc_sockettype_fdwatch = 4
+>>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 } isc_sockettype_t;
 
 /*@{*/
@@ -266,6 +275,16 @@ typedef struct isc_socketmgrmethods {
 	isc_result_t	(*socketcreate)(isc_socketmgr_t *manager, int pf,
 					isc_sockettype_t type,
 					isc_socket_t **socketp);
+<<<<<<< HEAD
+  // added-by-db
+#ifdef IO_USE_NETMAP
+	isc_result_t	(*open_netmap)(isc_socketmgr_t *manager, int pf, const char *ifname,
+					isc_sockettype_t type,
+					isc_socket_t **socketp);
+#endif
+
+=======
+>>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 	isc_result_t    (*fdwatchcreate)(isc_socketmgr_t *manager, int fd,
 					 int flags,
 					 isc_sockfdwatch_t callback,
@@ -346,7 +365,7 @@ struct isc_socket {
 };
 #endif
 
-#define ISCAPI_SOCKET_MAGIC	ISC_MAGIC('A','s','c','t')
+#define ISCAPI_SOCKET_MAGIC ISC_MAGIC('A','s','c','t')
 #define ISCAPI_SOCKET_VALID(s)	((s) != NULL && \
 				 (s)->magic == ISCAPI_SOCKET_MAGIC)
 
@@ -425,6 +444,18 @@ isc_socket_fdwatchpoke(isc_socket_t *sock,
  *\li	#ISC_R_SUCCESS
  */
 
+<<<<<<< HEAD
+// added-by-db 
+#ifdef IO_USE_NETMAP
+isc_result_t
+isc_socket_create_netmap(isc_socketmgr_t *manager,
+		  int pf, const char *ifname,
+		  isc_sockettype_t type,
+		  isc_socket_t **socketp);
+#endif
+
+=======
+>>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 isc_result_t
 isc_socket_create(isc_socketmgr_t *manager,
 		  int pf,

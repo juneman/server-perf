@@ -48,14 +48,14 @@ TARGETS =
 ### Note: paths that vary by Makefile MUST NOT be listed
 ### here, or they won't get expanded correctly.
 
-prefix =	/usr/local
+prefix =	/usr/local/named
 exec_prefix =	${prefix}
 bindir =	${exec_prefix}/bin
 sbindir =	${exec_prefix}/sbin
 includedir =	${prefix}/include
 libdir =	${exec_prefix}/lib
-sysconfdir =	/etc
-localstatedir =	/var
+sysconfdir =	${prefix}/etc
+localstatedir =	${prefix}/var
 mandir =	${datarootdir}/man
 datarootdir =   ${prefix}/share
 export_libdir =	${exec_prefix}/lib/bind9/
@@ -65,7 +65,7 @@ DESTDIR =
 
 
 
-top_builddir =	/root/bind-9.9.3-P2
+top_builddir =	/home/db/bind-9.9.3-P2-dubin
 
 ###
 ### All
@@ -133,17 +133,17 @@ install clean distclean maintainer-clean doc docclean man manclean::
 ###     EXT_CFLAGS
 
 CC = 		gcc
-CFLAGS =	-g -O2
+CFLAGS =	-g -O2 -I/usr/include/libxml2
 LDFLAGS =	
 STD_CINCLUDES =	
 STD_CDEFINES =	 -D_GNU_SOURCE
 STD_CWARNINGS =	 -W -Wall -Wmissing-prototypes -Wcast-qual -Wwrite-strings -Wformat -Wpointer-arith -fno-strict-aliasing
 
 BUILD_CC = gcc
-BUILD_CFLAGS = -g -O2
+BUILD_CFLAGS = -g -O2 -I/usr/include/libxml2
 BUILD_CPPFLAGS =  -D_GNU_SOURCE 
 BUILD_LDFLAGS = 
-BUILD_LIBS = -ldl 
+BUILD_LIBS = -ldl  -lxml2 -lz -lm
 
 .SUFFIXES:
 .SUFFIXES: .c .o
@@ -162,7 +162,7 @@ ALL_CFLAGS = ${EXT_CFLAGS} ${ALL_CPPFLAGS} ${CFLAGS} \
 .c.o:
 	${LIBTOOL_MODE_COMPILE} ${CC} ${ALL_CFLAGS} -c $<
 
-SHELL = /bin/bash
+SHELL = /bin/sh
 LIBTOOL = 
 LIBTOOL_MODE_COMPILE = ${LIBTOOL} 
 LIBTOOL_MODE_INSTALL = ${LIBTOOL} 
@@ -332,11 +332,11 @@ INSTALL_DATA =		${INSTALL} -m 644
 ### not to exist when not generating documentation.
 ###
 
-XSLTPROC =		xsltproc --novalid --xinclude --nonet
+XSLTPROC =		/usr/bin/xsltproc --novalid --xinclude --nonet
 PERL =			/usr/bin/perl
-LATEX =			latex
-PDFLATEX =		pdflatex
-W3M =			/usr/bin/w3m
+LATEX =			/usr/bin/latex
+PDFLATEX =		/usr/bin/pdflatex
+W3M =			w3m
 
 ###
 ### Script language program used to create internal symbol tables

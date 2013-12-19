@@ -29,6 +29,7 @@
 
 #include "nm_util.h"
 
+
 typedef struct _io_msg_s_ {
     char *buff;  // read/write buffer
     int buff_len; // length of buff
@@ -50,6 +51,7 @@ typedef struct _macaddr_map_s_ {
     char pad2[2];
 }macaddr_map_s;
 
+int netmap_init();
 int netmap_recv(int fd, io_msg_s *iomsg);
 int netmap_send(int fd, io_msg_s *iomsg);
 

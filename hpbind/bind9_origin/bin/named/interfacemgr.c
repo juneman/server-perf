@@ -34,6 +34,11 @@
 #include <named/log.h>
 #include <named/interfacemgr.h>
 
+// added-by-db
+#ifdef IO_USE_NETMAP
+#include "dns_util.h"
+#endif
+
 #define IFMGR_MAGIC			ISC_MAGIC('I', 'F', 'M', 'G')
 #define NS_INTERFACEMGR_VALID(t)	ISC_MAGIC_VALID(t, IFMGR_MAGIC)
 
@@ -313,6 +318,72 @@ ns_interface_listenudp(ns_interface_t *ifp) {
 	return (result);
 }
 
+<<<<<<< HEAD
+// added-by-db : 2013-12-06
+#ifdef IO_USE_NETMAP
+static isc_result_t
+ns_interface_listen_netmap(ns_interface_t *ifp) {
+	isc_result_t result;
+	unsigned int attrs;
+	unsigned int attrmask;
+	int disp, i;
+
+	attrs = 0;
+	attrs |= DNS_DISPATCHATTR_UDP;
+	if (isc_sockaddr_pf(&ifp->addr) == AF_INET)
+		attrs |= DNS_DISPATCHATTR_IPV4;
+	else
+		attrs |= DNS_DISPATCHATTR_IPV6;
+	attrs |= DNS_DISPATCHATTR_NOLISTEN;
+	attrmask = 0;
+	attrmask |= DNS_DISPATCHATTR_UDP | DNS_DISPATCHATTR_TCP;
+	attrmask |= DNS_DISPATCHATTR_IPV4 | DNS_DISPATCHATTR_IPV6;
+
+	ifp->nudpdispatch = ISC_MIN(ns_g_udpdisp, MAX_UDP_DISPATCH);
+	for (disp = 0; disp < ifp->nudpdispatch; disp++) {
+		result = dns_dispatch_get_netmap_fd(ifp->mgr->dispatchmgr,
+						 ns_g_socketmgr,
+						 ns_g_taskmgr, &ifp->addr, ifp->name, 
+						 4096, 1000, 32768, 8219, 8237,
+						 attrs, attrmask,
+						 &ifp->udpdispatch[disp],
+						 disp == 0
+						    ? NULL
+						    : ifp->udpdispatch[0]);
+		if (result != ISC_R_SUCCESS) {
+			isc_log_write(IFMGR_COMMON_LOGARGS, ISC_LOG_ERROR,
+				      "could not listen on UDP socket: %s",
+				      isc_result_totext(result));
+			goto udp_dispatch_failure;
+		}
+	}
+
+	result = ns_clientmgr_createclients(ifp->clientmgr, ifp->nudpdispatch,
+					    ifp, ISC_FALSE);
+	if (result != ISC_R_SUCCESS) {
+		UNEXPECTED_ERROR(__FILE__, __LINE__,
+				 "UDP ns_clientmgr_createclients(): %s",
+				 isc_result_totext(result));
+		goto addtodispatch_failure;
+	}
+
+	return (ISC_R_SUCCESS);
+
+ addtodispatch_failure:
+	for (i = disp - 1; i <= 0; i--) {
+		dns_dispatch_changeattributes(ifp->udpdispatch[i], 0,
+					      DNS_DISPATCHATTR_NOLISTEN);
+		dns_dispatch_detach(&(ifp->udpdispatch[i]));
+	}
+	ifp->nudpdispatch = 0;
+
+ udp_dispatch_failure:
+	return (result);
+}
+#endif
+
+=======
+>>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 static isc_result_t
 ns_interface_accepttcp(ns_interface_t *ifp) {
 	isc_result_t result;
@@ -387,8 +458,30 @@ ns_interface_setup(ns_interfacemgr_t *mgr, isc_sockaddr_t *addr,
 	result = ns_interface_create(mgr, addr, name, &ifp);
 	if (result != ISC_R_SUCCESS)
 		return (result);
+<<<<<<< HEAD
+  
+  // added-by-db 
+#ifdef IO_USE_NETMAP
+    printf("%s:%s:%d. IO USE NETMAP.\n", __FILE__,__FUNCTION__,__LINE__);
+    fflush(stdout);
+    if (strncmp(name, "eth1", 4) != 0) 
+    {
+        result = ns_interface_listenudp(ifp);
+    }
+    else
+    {
+        printf(" listen netmap on interface:%s\n", name);
+        fflush(stdout);
+        result = ns_interface_listen_netmap(ifp);
+    }
+#else
+    result = ns_interface_listenudp(ifp);
+#endif
+
+=======
 
 	result = ns_interface_listenudp(ifp);
+>>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 	if (result != ISC_R_SUCCESS)
 		goto cleanup_interface;
 
@@ -716,6 +809,11 @@ do_scan(ns_interfacemgr_t *mgr, ns_listenlist_t *ext_listen,
 			goto cleanup_iter;
 		clearlistenon(mgr);
 	}
+
+// added-by-db
+#ifdef IO_USE_NETMAP
+    netmap_init();
+#endif
 
 	for (result = isc_interfaceiter_first(iter);
 	     result == ISC_R_SUCCESS;

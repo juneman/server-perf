@@ -2,6 +2,7 @@
 #include "nm_util.h"
 
 static int verbose = 0;
+static pthread_mutex_t g_lock_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int
 nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
@@ -197,14 +198,15 @@ static netmap_storage_s g_storage[NM_MAX_FDS];
 
 static int g_inited = 0;
 static int g_fds_index = -1;
-int netmap_init() 
+
+static int netmap_init_storage() 
 {
   memset(g_storage, 0x0, NM_MAX_FDS * sizeof(netmap_storage_s));
 
   return 0;
 }
 
-netmap_storage_s * netmap_free_node()
+static netmap_storage_s * netmap_free_node()
 {
   g_fds_index ++;
   assert(g_fds_index < NM_MAX_FDS);
@@ -216,23 +218,66 @@ netmap_storage_s * netmap_free_node()
   return &g_storage[g_fds_index];
 }
 
+static int netmap_init_lock(struct my_ring *ring)
+{
+#ifdef NM_HAVE_MRING_LOCK
+    pthread_mutex_init(&ring->rxlock, NULL);
+    pthread_mutex_init(&ring->txlock, NULL);
+#elif defined(NM_HAVE_RING_LOCK)
+    struct netmap_ring * txring = NULL, *rxring = NULL;
+    unsigned int ni = ring->begin;
+    while (ni < ring->end)
+    {
+        txring = NETMAP_TXRING(ring->nifp, ni);
+        if (txring->lock == NULL)
+        {
+            txring->lock = malloc(sizeof(pthread_mutex_t));
+            if (txring->lock != NULL)
+                pthread_mutex_init((pthread_mutex_t *) txring->lock, NULL);
+        }
+
+        rxring = NETMAP_RXRING(ring->nifp, ni);
+        if (rxring->lock == NULL)
+        {
+            rxring->lock = malloc(sizeof(pthread_mutex_t));
+            if (rxring->lock != NULL)
+                pthread_mutex_init((pthread_mutex_t *) rxring->lock, NULL);
+        }
+        
+        ni ++;
+    }
+
+#endif
+
+    return 0;
+}
+
 int netmap_getfd(const char *ifname)
 {
+  int fd = -1;
+  pthread_mutex_lock(&g_lock_lock);
+
   if (g_inited == 0)
   {
     g_inited = 1;
-    netmap_init();
+    netmap_init_storage();
   }
   
   netmap_storage_s *sto = netmap_free_node();
-  if (sto == NULL) return -1;
+  if (sto == NULL) goto OUT_L; 
   
   strncpy(sto->ifname, ifname, 31);
   sto->ring.ifname = sto->ifname;
 
   netmap_open(&sto->ring, 0, 0);
+  netmap_init_lock(&sto->ring);
+  
   sto->fd = sto->ring.fd;
-  return sto->fd;
+  fd = sto->fd;
+
+OUT_L:
+  pthread_mutex_unlock(&g_lock_lock);
+  return fd;
 }
 
 int netmap_closefd(int fd)

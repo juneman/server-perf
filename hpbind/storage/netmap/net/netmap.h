@@ -43,9 +43,6 @@
 #ifndef _NET_NETMAP_H_
 #define _NET_NETMAP_H_
 
-// added-by-db
-#define SYNC_HAVE_LOCK
-
 /*
  * --- Netmap data structures ---
  *
@@ -245,12 +242,6 @@ struct netmap_ring {
 	uint32_t	avail;		/* number of usable slots */
 	uint32_t        cur;		/* 'current' r/w position */
 	uint32_t	reserved;	/* not refilled before current */
-
-// added-by-db
-#ifdef SYNC_HAVE_LOCK
-    void * lock; // in user space init
-#endif
-
 
 	const uint16_t	nr_buf_size;
 	uint16_t	flags;
