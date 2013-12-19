@@ -318,7 +318,6 @@ ns_interface_listenudp(ns_interface_t *ifp) {
 	return (result);
 }
 
-<<<<<<< HEAD
 // added-by-db : 2013-12-06
 #ifdef IO_USE_NETMAP
 static isc_result_t
@@ -382,8 +381,6 @@ ns_interface_listen_netmap(ns_interface_t *ifp) {
 }
 #endif
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 static isc_result_t
 ns_interface_accepttcp(ns_interface_t *ifp) {
 	isc_result_t result;
@@ -458,13 +455,12 @@ ns_interface_setup(ns_interfacemgr_t *mgr, isc_sockaddr_t *addr,
 	result = ns_interface_create(mgr, addr, name, &ifp);
 	if (result != ISC_R_SUCCESS)
 		return (result);
-<<<<<<< HEAD
   
   // added-by-db 
 #ifdef IO_USE_NETMAP
     printf("%s:%s:%d. IO USE NETMAP.\n", __FILE__,__FUNCTION__,__LINE__);
     fflush(stdout);
-    if (strncmp(name, "eth1", 4) != 0) 
+    if (strncmp(name, "eth1", 5) != 0) 
     {
         result = ns_interface_listenudp(ifp);
     }
@@ -478,10 +474,6 @@ ns_interface_setup(ns_interfacemgr_t *mgr, isc_sockaddr_t *addr,
     result = ns_interface_listenudp(ifp);
 #endif
 
-=======
-
-	result = ns_interface_listenudp(ifp);
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 	if (result != ISC_R_SUCCESS)
 		goto cleanup_interface;
 

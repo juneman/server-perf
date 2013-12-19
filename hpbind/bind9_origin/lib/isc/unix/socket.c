@@ -84,7 +84,6 @@
 
 #include "errno2result.h"
 
-<<<<<<< HEAD
 #ifdef IO_USE_NETMAP
 #include "nm_util.h"
 #include "dns_util.h"
@@ -95,8 +94,6 @@
 #include <sys/poll.h>
 #endif
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 /* See task.c about the following definition: */
 #ifdef BIND9
 #ifdef ISC_PLATFORM_USETHREADS
@@ -516,7 +513,6 @@ static isc_boolean_t process_ctlfd(isc__socketmgr_t *manager);
 ISC_SOCKETFUNC_SCOPE isc_result_t
 isc__socket_create(isc_socketmgr_t *manager, int pf, isc_sockettype_t type,
 		   isc_socket_t **socketp);
-<<<<<<< HEAD
 // added-by-db
 #ifdef IO_USE_NETMAP
 ISC_SOCKETFUNC_SCOPE isc_result_t
@@ -525,8 +521,6 @@ isc__socket_open_netmap(isc_socketmgr_t *manager,
 		   isc_socket_t **socketp);
 #endif
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 ISC_SOCKETFUNC_SCOPE void
 isc__socket_attach(isc_socket_t *sock, isc_socket_t **socketp);
 ISC_SOCKETFUNC_SCOPE void
@@ -658,13 +652,10 @@ static struct {
 static isc_socketmgrmethods_t socketmgrmethods = {
 	isc__socketmgr_destroy,
 	isc__socket_create,
-<<<<<<< HEAD
   //added-by-db
 #ifdef IO_USE_NETMAP
 	isc__socket_open_netmap,
 #endif
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 	isc__socket_fdwatchcreate
 };
 
@@ -1905,11 +1896,7 @@ doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	dump_msg(&msghdr);
 #endif
 
-<<<<<<< HEAD
     cc = recvmsg(sock->fd, &msghdr, 0);
-=======
-	cc = recvmsg(sock->fd, &msghdr, 0);
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 	recv_errno = errno;
 
 #if defined(ISC_SOCKET_DEBUG)
@@ -2129,12 +2116,6 @@ doio_send(isc__socket_t *sock, isc_socketevent_t *dev) {
 #ifdef IO_USE_NETMAP
     if (sock->type == isc_sockettype_netmap) 
     {
-    //    printf("%s,%s,%d.\n", __FILE__, __FUNCTION__,__LINE__);
-      //  fflush(stdout);
-
-//        char *p = NULL;
-  //      *p = 1;
-
         return doio_netmap_send(sock, dev);
     }
 #endif 
@@ -2579,7 +2560,6 @@ opensocket(isc__socketmgr_t *manager, isc__socket_t *sock,
 	int size;
 #endif
 
-<<<<<<< HEAD
 again:
     if (dup_socket == NULL) {
         switch (sock->type) {
@@ -2612,35 +2592,6 @@ again:
     }
     if (sock->fd == -1 && errno == EINTR && tries++ < 42)
         goto again;
-=======
- again:
-	if (dup_socket == NULL) {
-		switch (sock->type) {
-		case isc_sockettype_udp:
-			sock->fd = socket(sock->pf, SOCK_DGRAM, IPPROTO_UDP);
-			break;
-		case isc_sockettype_tcp:
-			sock->fd = socket(sock->pf, SOCK_STREAM, IPPROTO_TCP);
-			break;
-		case isc_sockettype_unix:
-			sock->fd = socket(sock->pf, SOCK_STREAM, 0);
-			break;
-		case isc_sockettype_fdwatch:
-			/*
-			 * We should not be called for isc_sockettype_fdwatch
-			 * sockets.
-			 */
-			INSIST(0);
-			break;
-		}
-	} else {
-		sock->fd = dup(dup_socket->fd);
-		sock->dupped = 1;
-		sock->bound = dup_socket->bound;
-	}
-	if (sock->fd == -1 && errno == EINTR && tries++ < 42)
-		goto again;
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 
 #ifdef F_DUPFD
 	/*
@@ -2887,7 +2838,6 @@ setup_done:
 	return (ISC_R_SUCCESS);
 }
 
-<<<<<<< HEAD
 // added-by-db
 #ifdef IO_USE_NETMAP
 static isc_result_t
@@ -3028,8 +2978,6 @@ setup_done:
 #endif
 
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 /*
  * Create a 'type' socket or duplicate an existing socket, managed
  * by 'manager'.  Events will be posted to 'task' and when dispatched
@@ -3111,7 +3059,6 @@ socket_create(isc_socketmgr_t *manager0, int pf, isc_sockettype_t type,
 	return (ISC_R_SUCCESS);
 }
 
-<<<<<<< HEAD
 // added-by-db 
 #ifdef IO_USE_NETMAP
 static isc_result_t
@@ -3188,8 +3135,6 @@ socket_open_netmap(isc_socketmgr_t *manager0, int pf, const char *ifname,
 #endif
 
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 /*%
  * Create a new 'type' socket managed by 'manager'.  Events
  * will be posted to 'task' and when dispatched 'action' will be
@@ -3203,7 +3148,6 @@ isc__socket_create(isc_socketmgr_t *manager0, int pf, isc_sockettype_t type,
 	return (socket_create(manager0, pf, type, socketp, NULL));
 }
 
-<<<<<<< HEAD
 // added-by-db 
 #ifdef IO_USE_NETMAP
 ISC_SOCKETFUNC_SCOPE isc_result_t
@@ -3215,8 +3159,6 @@ isc__socket_open_netmap(isc_socketmgr_t *manager0, int pf, const char* ifname,
 }
 #endif
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 /*%
  * Duplicate an existing socket.  The new socket is returned
  * in 'socketp'.
@@ -3935,11 +3877,7 @@ internal_recv(isc_task_t *me, isc_event_t *ev) {
 	 */
 	dev = ISC_LIST_HEAD(sock->recv_list);
 	while (dev != NULL) {
-<<<<<<< HEAD
         switch (doio_recv(sock, dev)) {
-=======
-		switch (doio_recv(sock, dev)) {
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 		case DOIO_SOFT:
 			goto poke;
 
@@ -5320,10 +5258,6 @@ isc__socket_recv(isc_socket_t *sock0, isc_region_t *region,
 	dev = allocate_socketevent(sock, ISC_SOCKEVENT_RECVDONE, action, arg);
 	if (dev == NULL)
 		return (ISC_R_NOMEMORY);
-<<<<<<< HEAD
-=======
-
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 	return (isc__socket_recv2(sock0, region, minimum, task, dev, 0));
 }
 

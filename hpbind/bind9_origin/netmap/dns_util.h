@@ -29,7 +29,6 @@
 
 #include "nm_util.h"
 
-
 typedef struct _io_msg_s_ {
     char *buff;  // read/write buffer
     int buff_len; // length of buff

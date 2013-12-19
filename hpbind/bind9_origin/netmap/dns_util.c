@@ -3,7 +3,7 @@
 #include "dns_util.h"
 
 // for test
-#define NM_DEBUG
+//#define NM_DEBUG
 
 #ifdef NM_DEBUG
 #include <signal.h>
@@ -480,10 +480,7 @@ LOOP_L:
 
         break;
     }
-#ifdef NM_DEBUG 
-    if (flag == 0) 
-        g_tx_ring_busy_count ++;
-#endif
+
     if (m == 0 && times > 0)
     {
         int err = 0;
@@ -496,6 +493,10 @@ LOOP_L:
         times --;
         goto LOOP_L;
     }
+#ifdef NM_DEBUG 
+    if (flag == 0) 
+        g_tx_ring_busy_count ++;
+#endif
 
     return (m);
 }

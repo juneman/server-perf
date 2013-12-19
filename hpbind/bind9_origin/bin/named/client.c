@@ -442,11 +442,7 @@ exit_check(ns_client_t *client) {
 			if (TCP_CLIENT(client)) {
 				client_accept(client);
 			} else
-<<<<<<< HEAD
                client_udprecv(client);
-=======
-				client_udprecv(client);
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 			client->newstate = NS_CLIENTSTATE_MAX;
 			return (ISC_TRUE);
 		}
@@ -1439,12 +1435,8 @@ client_request(isc_task_t *task, isc_event_t *event) {
 
 	if (exit_check(client))
 		goto cleanup;
-<<<<<<< HEAD
 
     client->state = client->newstate = NS_CLIENTSTATE_WORKING;
-=======
-	client->state = client->newstate = NS_CLIENTSTATE_WORKING;
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 
 	isc_task_getcurrenttime(task, &client->requesttime);
 	client->now = client->requesttime;

@@ -101,7 +101,6 @@ isc_socket_create(isc_socketmgr_t *manager, int pf, isc_sockettype_t type,
 	return (manager->methods->socketcreate(manager, pf, type, socketp));
 }
 
-<<<<<<< HEAD
 // added-by-db 2013-12-06
 #ifdef IO_USE_NETMAP
 isc_result_t
@@ -115,8 +114,6 @@ isc_socket_create_netmap(isc_socketmgr_t *manager, int pf,
 }
 #endif
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 void
 isc_socket_attach(isc_socket_t *sock, isc_socket_t **socketp) {
 	REQUIRE(ISCAPI_SOCKET_VALID(sock));

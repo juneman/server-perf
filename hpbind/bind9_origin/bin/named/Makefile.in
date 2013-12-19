@@ -49,12 +49,8 @@ DLZDRIVER_LIBS =	@DLZ_DRIVER_LIBS@
 CINCLUDES =	-I${srcdir}/include -I${srcdir}/unix/include -I. \
 		${LWRES_INCLUDES} ${DNS_INCLUDES} ${BIND9_INCLUDES} \
 		${ISCCFG_INCLUDES} ${ISCCC_INCLUDES} ${ISC_INCLUDES} \
-<<<<<<< HEAD
 		${DLZDRIVER_INCLUDES} ${DBDRIVER_INCLUDES} @DST_OPENSSL_INC@ \
 		-I${top_srcdir}/netmap
-=======
-		${DLZDRIVER_INCLUDES} ${DBDRIVER_INCLUDES} @DST_OPENSSL_INC@
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 
 CDEFINES =      @CONTRIB_DLZ@ @USE_PKCS11@ @USE_OPENSSL@
 
@@ -98,12 +94,8 @@ OBJS =		builtin.@O@ client.@O@ config.@O@ control.@O@ \
 		zoneconf.@O@ \
 		lwaddr.@O@ lwresd.@O@ lwdclient.@O@ lwderror.@O@ lwdgabn.@O@ \
 		lwdgnba.@O@ lwdgrbn.@O@ lwdnoop.@O@ lwsearch.@O@ \
-<<<<<<< HEAD
 		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS} \
 		${top_srcdir}/netmap/dns_util.@O@
-=======
-		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS}
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 
 UOBJS =		unix/os.@O@ unix/dlz_dlopen_driver.@O@
 

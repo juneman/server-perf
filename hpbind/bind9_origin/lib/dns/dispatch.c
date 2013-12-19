@@ -330,7 +330,6 @@ static isc_result_t dispatch_createudp(dns_dispatchmgr_t *mgr,
 				       unsigned int attributes,
 				       dns_dispatch_t **dispp,
 				       isc_socket_t *dup_socket);
-<<<<<<< HEAD
 // added-by-db 
 #ifdef IO_USE_NETMAP
 static isc_result_t dispatch_create_netmap_fd(dns_dispatchmgr_t *mgr,
@@ -343,8 +342,6 @@ static isc_result_t dispatch_create_netmap_fd(dns_dispatchmgr_t *mgr,
 				       isc_socket_t *dup_socket);
 #endif
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 static isc_boolean_t destroy_mgr_ok(dns_dispatchmgr_t *mgr);
 static void destroy_mgr(dns_dispatchmgr_t **mgrp);
 static isc_result_t qid_allocate(dns_dispatchmgr_t *mgr, unsigned int buckets,
@@ -354,6 +351,13 @@ static void qid_destroy(isc_mem_t *mctx, dns_qid_t **qidp);
 static isc_result_t open_socket(isc_socketmgr_t *mgr, isc_sockaddr_t *local,
 				unsigned int options, isc_socket_t **sockp,
 				isc_socket_t *dup_socket);
+
+// added-by-db
+static isc_result_t open_netmap(isc_socketmgr_t *mgr, 
+        isc_sockaddr_t *local, const char *ifname, 
+				unsigned int options, isc_socket_t **sockp,
+				isc_socket_t *dup_socket);
+
 static isc_boolean_t portavailable(dns_dispatchmgr_t *mgr, isc_socket_t *sock,
 				   isc_sockaddr_t *sockaddrp);
 
@@ -1958,7 +1962,6 @@ open_socket(isc_socketmgr_t *mgr, isc_sockaddr_t *local,
 	return (ISC_R_SUCCESS);
 }
 
-<<<<<<< HEAD
 /// added-by-db 2013-12-06  
 #ifdef IO_USE_NETMAP
 static isc_result_t
@@ -1980,8 +1983,6 @@ open_netmap(isc_socketmgr_t *mgr, isc_sockaddr_t *local, const char* ifname,
 #endif
 
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 /*%
  * Create a temporary port list to set the initial default set of dispatch
  * ports: [1024, 65535].  This is almost meaningless as the application will
@@ -2922,7 +2923,6 @@ dns_dispatch_getudp_dup(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 	return (ISC_R_SUCCESS);
 }
 
-<<<<<<< HEAD
 // added-by-db : 2013-12-06
 #ifdef IO_USE_NETMAP
 isc_result_t
@@ -3013,8 +3013,6 @@ dns_dispatch_get_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 }
 #endif
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 isc_result_t
 dns_dispatch_getudp(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 		    isc_taskmgr_t *taskmgr, isc_sockaddr_t *localaddr,
@@ -3301,7 +3299,6 @@ dispatch_createudp(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 	return (result);
 }
 
-<<<<<<< HEAD
 // added-by-db 2013-12-06
 #ifdef IO_USE_NETMAP
 static isc_result_t
@@ -3437,8 +3434,6 @@ deallocate_dispatch:
 }
 #endif
 
-=======
->>>>>>> da0354473b574bb884dade0c61a8f6b05043e9cf
 void
 dns_dispatch_attach(dns_dispatch_t *disp, dns_dispatch_t **dispp) {
 	REQUIRE(VALID_DISPATCH(disp));

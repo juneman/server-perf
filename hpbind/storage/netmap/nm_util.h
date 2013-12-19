@@ -97,9 +97,11 @@ pkt_copy(const void *_src, void *_dst, int l)
 	}
 }
 
-//#define NM_HAVE_G_LOCK 
+#define NM_DB_ECHO
+
+#define NM_HAVE_G_LOCK 
 //#define NM_HAVE_MRING_LOCK
-#define NM_HAVE_RING_LOCK
+//#define NM_HAVE_RING_LOCK
 
 /*
  * info on a ring we handle
