@@ -30,7 +30,7 @@ cp -v ${BIND9_DEV_DIR}/lib/dns/dispatch.c ${BIND9_BACKUP_DIR}/lib/dns/
 cp -v ${BIND9_DEV_DIR}/lib/isc/include/isc/{bind9.h,namespace.h,socket.h} ${BIND9_BACKUP_DIR}/lib/isc/include/isc/
 cp -v ${BIND9_DEV_DIR}/lib/isc/unix/{Makefile.in,socket.c} ${BIND9_BACKUP_DIR}/lib/isc/unix/
 cp -v ${BIND9_DEV_DIR}/lib/isc/{Makefile.in,socket_api.c,task.c} ${BIND9_BACKUP_DIR}/lib/isc/
-cp -vr ${BIND9_DEV_DIR}/netmap/* ${BIND9_BACKUP_DIR}/netmap/ 
+cp -vfr ${BIND9_DEV_DIR}/netmap/* ${BIND9_BACKUP_DIR}/netmap/ 
 cp -v ${BIND9_DEV_DIR}/Makefile.in ${BIND9_BACKUP_DIR}
 echo " backup done."
 
@@ -49,6 +49,6 @@ cp -vf ${SOURCE_DIR}/lib/dns/dispatch.c ${BIND9_DEV_DIR}/lib/dns/
 cp -vf ${SOURCE_DIR}/lib/isc/include/isc/{bind9.h,namespace.h,socket.h} ${BIND9_DEV_DIR}/lib/isc/include/isc/ 
 cp -vf ${SOURCE_DIR}/lib/isc/unix/{Makefile.in,socket.c} ${BIND9_DEV_DIR}/lib/isc/unix/ 
 cp -vf ${SOURCE_DIR}/lib/isc/{socket_api.c,task.c,Makefile.in} ${BIND9_DEV_DIR}/lib/isc/ 
-cp -vf ${SOURCE_DIR}/netmap/* ${BIND9_DEV_DIR}/netmap/
+cp -vrf ${SOURCE_DIR}/netmap/* ${BIND9_DEV_DIR}/netmap/
 cp -vf ${SOURCE_DIR}/Makefile.in ${BIND9_DEV_DIR}/
 echo "patch done."
