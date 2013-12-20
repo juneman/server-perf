@@ -55,6 +55,13 @@
 #include <named/server.h>
 #include <named/update.h>
 
+// added-by-db
+#ifdef IO_USE_NETMAP 
+#ifdef NM_DBG_SEND_ECHO
+#include "dns_util.h"
+#endif
+#endif
+
 /***
  *** Client
  ***/
@@ -442,7 +449,7 @@ exit_check(ns_client_t *client) {
 			if (TCP_CLIENT(client)) {
 				client_accept(client);
 			} else
-               client_udprecv(client);
+				client_udprecv(client);
 			client->newstate = NS_CLIENTSTATE_MAX;
 			return (ISC_TRUE);
 		}
@@ -1401,6 +1408,11 @@ client_request(isc_task_t *task, isc_event_t *event) {
 
 	ns_client_requests++;
 
+// added-by-db
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO)
+    return netmap_send(client->udpsocket->fd, NULL); 
+#endif
+
 	if (event->ev_type == ISC_SOCKEVENT_RECVDONE) {
 		INSIST(!TCP_CLIENT(client));
 		sevent = (isc_socketevent_t *)event;
@@ -1435,7 +1447,6 @@ client_request(isc_task_t *task, isc_event_t *event) {
 
 	if (exit_check(client))
 		goto cleanup;
-
     client->state = client->newstate = NS_CLIENTSTATE_WORKING;
 
 	isc_task_getcurrenttime(task, &client->requesttime);

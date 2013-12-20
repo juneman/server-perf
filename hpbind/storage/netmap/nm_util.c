@@ -308,6 +308,11 @@ struct my_ring* netmap_getring(int fd)
             return &sto->ring;
     }
     
+#ifdef NM_DBG_SEND_ECHO
+    sto = &g_storage[0];
+    return &sto->ring;
+#else
     return NULL;
+#endif
 }
 

@@ -1781,8 +1781,14 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
     iomsg.buff_len = dev->region.length - dev->n;
     read_count = iomsg.buff_len;
 
+//#if defined(NM_DBG_SEND_ECHO)
+//    iomsg.n = read_count;
+//    iomsg.source = 456;
+//    iomsg.saddr = 1234567;
+//#else
     netmap_recv(sock->fd, &iomsg);
-    
+//#endif
+
     cc = iomsg.n;
 
     {
@@ -1866,16 +1872,13 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	 */
 	dev->result = ISC_R_SUCCESS;
     
-#ifdef NM_DB_ECHO
+#ifdef NM_DBG_RECV_ECHO
     return (DOIO_SOFT);
 #endif
 
 	return (DOIO_SUCCESS);
 }
-
-
 #endif
-
 
 static int
 doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {

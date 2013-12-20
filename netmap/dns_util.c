@@ -1,9 +1,7 @@
 #include <assert.h>
 #include <pthread.h>
+#include "nm_util.h"
 #include "dns_util.h"
-
-// for test
-#define NM_DEBUG
 
 #ifdef NM_DEBUG
 #include <signal.h>
@@ -32,7 +30,7 @@ void handle_signal(int no)
 }
 #endif // NM_DEBUG
 
-#ifdef NM_DB_ECHO
+#if defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_SEND_ECHO)
 static int nm_debug_echo(struct my_ring *src);
 #endif
 
@@ -328,9 +326,9 @@ NEXT_L:
     }
     rxring->avail -= m;
     rxring->cur = j;
+
     return (m);
 }
-
 
 static int process_send_ring(struct netmap_ring *txring,
         u_int limit, io_msg_s *iomsg)
@@ -516,7 +514,7 @@ int netmap_recv(int fd, io_msg_s *iomsg )
         return -1;
     
 #if  defined(NM_HAVE_MRING_LOCK)
-//    pthread_mutex_lock(&ring->rxlock);
+    pthread_mutex_lock(&ring->rxlock);
 #elif defined(NM_HAVE_G_LOCK)
     pthread_mutex_lock(&g_recv_lock);
 #endif
@@ -525,7 +523,7 @@ int netmap_recv(int fd, io_msg_s *iomsg )
     g_recv_sig_count ++;
 #endif
 
-#ifdef NM_DB_ECHO
+#ifdef NM_DBG_RECV_ECHO
     (void) iomsg;
     ret = nm_debug_echo(ring);
 #else
@@ -540,7 +538,6 @@ int netmap_recv(int fd, io_msg_s *iomsg )
 
     return ret;
 }
-
 
 int netmap_send(int fd, io_msg_s *iomsg) 
 {
@@ -561,7 +558,12 @@ int netmap_send(int fd, io_msg_s *iomsg)
     g_send_sig_count ++;
 #endif
 
+#ifdef NM_DBG_SEND_ECHO
+    (void) iomsg;
+    ret = nm_debug_echo(ring);
+#else
     ret = netmap_send_to_ring(ring, iomsg);
+#endif
 
 #if  defined(NM_HAVE_MRING_LOCK)
     pthread_mutex_unlock(&ring->txlock);
@@ -580,6 +582,17 @@ int netmap_init()
     if (g_macaddr_inited == 1) return 0;
     g_macaddr_inited = 1;
 
+#ifdef NM_DBG_RECV_ECHO
+    printf(" NEMTAP DEBUG : USE RECV ECHO\n");
+#else 
+    printf(" NEMTAP DEBUG : USE SEND ECHO\n");
+#endif
+#ifdef NM_HAVE_G_LOCK
+    printf(" NETMAP LOCK: USE GLOBAL LOCK\n"); 
+#else
+    printf(" NETMAP LOCK: USE MRING  LOCK\n"); 
+#endif
+
 #ifdef NM_DEBUG
     signal(SIGNAL_NUM_PUT, handle_signal);
     printf(" SIG NUM:%d\n", SIGNAL_NUM_PUT);
@@ -592,7 +605,7 @@ int netmap_init()
 }
 
 
-#ifdef NM_DB_ECHO
+#if  defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_SEND_ECHO)
 
 static int echo_dns_query(char *buff, int n)
 {
@@ -654,6 +667,9 @@ static int echo_dns_query(char *buff, int n)
 
 static int dns_packet_process(char *buff, int len)
 {
+    assert(buff != NULL);
+    assert(len > 42);
+
     echo_dns_query(buff, len);
     return 0;
 }
@@ -684,12 +700,6 @@ static int process_rings(struct netmap_ring *rxring,
             dns_packet_process(rxbuf, rxring->slot[j].len);
         }
 
-        if (ts->buf_idx < 2 || rs->buf_idx < 2) {
-            D("wrong index rx[%d] = %d  -> tx[%d] = %d",
-                    j, rs->buf_idx, k, ts->buf_idx);
-            sleep(2);
-        }
-
         pkt = ts->buf_idx;
         ts->buf_idx = rs->buf_idx;
         rs->buf_idx = pkt;
@@ -712,7 +722,6 @@ NEXT_L:
 
     return (m);
 }
-
 
 /* move packts from src to destination */
 static int nm_debug_echo(struct my_ring *src)
@@ -740,4 +749,4 @@ static int nm_debug_echo(struct my_ring *src)
 
     return (m);
 }
-#endif // NM_DB_ECHO
+#endif // NM_DBG_RECV_ECHO

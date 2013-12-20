@@ -97,7 +97,11 @@ pkt_copy(const void *_src, void *_dst, int l)
 	}
 }
 
-#define NM_DB_ECHO
+//#define NM_DEBUG
+
+#define NM_DBG_RECV_ECHO
+//#define NM_DBG_SEND_ECHO
+
 
 #define NM_HAVE_G_LOCK 
 //#define NM_HAVE_MRING_LOCK
