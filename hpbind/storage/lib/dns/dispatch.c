@@ -1971,6 +1971,9 @@ open_netmap(isc_socketmgr_t *mgr, isc_sockaddr_t *local, const char* ifname,
 {
   isc_socket_t *sock = NULL;
   isc_result_t result;
+  
+  UNUSED(options);
+  UNUSED(dup_socket);
 
   result = isc_socket_create_netmap(mgr, isc_sockaddr_pf(local), ifname,
       isc_sockettype_netmap, &sock);
@@ -2937,6 +2940,8 @@ dns_dispatch_get_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
 	isc_result_t result;
 	dns_dispatch_t *disp = NULL;
 
+    UNUSED(mask);
+
 	REQUIRE(VALID_DISPATCHMGR(mgr));
 	REQUIRE(sockmgr != NULL);
 	REQUIRE(localaddr != NULL);
@@ -3314,6 +3319,8 @@ dispatch_create_netmap_fd(dns_dispatchmgr_t *mgr, isc_socketmgr_t *sockmgr,
     dns_dispatch_t *disp;
     isc_socket_t *sock = NULL;
     int i = 0;
+
+    UNUSED(dup_socket);
 
     /*
      * dispatch_allocate() checks mgr for us.

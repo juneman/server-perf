@@ -99,13 +99,16 @@ pkt_copy(const void *_src, void *_dst, int l)
 
 //#define NM_DEBUG
 
-#define NM_DBG_RECV_ECHO
+//#define NM_DBG_RECV_ECHO
+//#define NM_DBG_RECV_ECHO_SINGLE
 //#define NM_DBG_SEND_ECHO
 
+// lock lib
+#define NM_USE_MUTEX_LOCK
+//#define NM_USE_SPIN_LOCK
 
+// lock scope
 #define NM_HAVE_G_LOCK 
-//#define NM_HAVE_MRING_LOCK
-//#define NM_HAVE_RING_LOCK
 
 /*
  * info on a ring we handle
@@ -120,11 +123,6 @@ struct my_ring {
 	struct netmap_if *nifp;
 	struct netmap_ring *tx, *rx;    /* shortcuts */
 
-#ifdef NM_HAVE_MRING_LOCK    
-    pthread_mutex_t rxlock;
-    pthread_mutex_t txlock;
-#endif
-
 	uint32_t if_flags;
 	uint32_t if_reqcap;
 	uint32_t if_curcap;
@@ -133,5 +131,24 @@ struct my_ring {
 int netmap_getfd(const char *ifname);
 int netmap_closefd(int fd);
 struct my_ring *netmap_getring(int fd);
+
+// 
+//
+typedef struct __netmap_lock_t__
+{
+#ifdef NM_USE_MUTEX_LOCK
+    pthread_mutex_t lock;
+#else
+    pthread_spinlock_t lock;
+#endif
+}netmap_lock_t;
+
+int netmap_lock_init(netmap_lock_t *lock);
+int netmap_lock_destory(netmap_lock_t *lock);
+
+int netmap_lock(netmap_lock_t *lock);
+int netmap_trylock(netmap_lock_t *lock);
+
+int netmap_unlock(netmap_lock_t *lock);
 
 #endif /* _NM_UTIL_H */

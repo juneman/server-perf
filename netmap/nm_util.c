@@ -301,18 +301,76 @@ struct my_ring* netmap_getring(int fd)
 {
     int index = 0;
     netmap_storage_s *sto;
+    
+#ifdef NM_DBG_SEND_ECHO
+    sto = &g_storage[0];
+    return &sto->ring;
+#else
     for (index = 0; index < NM_MAX_FDS; index ++ ) 
     {
         sto = &g_storage[index];
         if (sto->fd == fd)
             return &sto->ring;
     }
-    
-#ifdef NM_DBG_SEND_ECHO
-    sto = &g_storage[0];
-    return &sto->ring;
-#else
     return NULL;
 #endif
 }
+
+// lock impl
+int netmap_lock_init(netmap_lock_t *lock)
+{
+#if defined(NM_USE_MUTEX_LOCK)
+    return pthread_mutex_init(&(lock->lock), NULL);
+#elif defined(NM_USE_SPIN_LOCK)
+    return pthread_spin_init(&(lock->lock), PTHREAD_PROCESS_SHARED); 
+#else
+    assert(0);
+#endif
+
+}
+int netmap_lock_destroy(netmap_lock_t *lock)
+{
+#if defined(NM_USE_MUTEX_LOCK)
+    return pthread_mutex_destroy(&(lock->lock));
+#elif defined(NM_USE_SPIN_LOCK)
+    return pthread_spin_destroy(&(lock->lock));
+#else
+    assert(0);
+#endif
+
+}
+int netmap_lock(netmap_lock_t *lock)
+{
+#if defined(NM_USE_MUTEX_LOCK)
+    return pthread_mutex_lock(&(lock->lock));
+#elif defined(NM_USE_SPIN_LOCK)
+    return pthread_spin_lock(&(lock->lock));
+#else
+    assert(0);
+#endif
+
+}
+
+int netmap_trylock(netmap_lock_t *lock)
+{
+#if defined(NM_USE_MUTEX_LOCK)
+    return pthread_mutex_trylock(&(lock->lock));
+#elif defined(NM_USE_SPIN_LOCK)
+    return pthread_spin_trylock(&(lock->lock));
+#else
+    assert(0);
+#endif
+
+}
+int netmap_unlock(netmap_lock_t *lock)
+{
+#if defined(NM_USE_MUTEX_LOCK)
+    return pthread_mutex_unlock(&(lock->lock));
+#elif defined(NM_USE_SPIN_LOCK)
+    return pthread_spin_unlock(&(lock->lock));
+#else
+    assert(0);
+#endif
+}
+
 

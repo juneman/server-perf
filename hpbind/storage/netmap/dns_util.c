@@ -32,21 +32,21 @@ void handle_signal(int no)
 }
 #endif // NM_DEBUG
 
-#if defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_SEND_ECHO)
+#if defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_RECV_ECHO_SINGLE) || defined(NM_DBG_SEND_ECHO)
 static int nm_debug_echo(struct my_ring *src);
+static int dns_packet_process(char *buff, int len);
 #endif
 
 #ifdef NM_HAVE_G_LOCK
-static pthread_mutex_t g_recv_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t g_send_lock = PTHREAD_MUTEX_INITIALIZER;
+static netmap_lock_t g_recv_lock;
+static netmap_lock_t g_send_lock;
 #endif
 
-static pthread_mutex_t g_init_macaddr_lock = PTHREAD_MUTEX_INITIALIZER;
-static int g_macaddr_inited = 0;
+static pthread_mutex_t g_netmap_init_lock = PTHREAD_MUTEX_INITIALIZER;
+static int g_nm_inited = 0;
 
 #define MAC_ADDR_MAP_ITEMS 1024
 static macaddr_map_s g_macaddr_map[MAC_ADDR_MAP_ITEMS];
-static int g_macaddr_map_inited = 0;
 
 static char g_pkt_header[14 + 20 + 8] = {0};
 static int g_pkt_header_inited = 0;
@@ -293,6 +293,7 @@ static int process_recv_ring(struct netmap_ring *rxring,
         u_int limit, io_msg_s *iomsg) 
 {
     u_int j, m = 0;
+
     u_int f = 0;
 
     j = rxring->cur; /* RX */
@@ -313,14 +314,11 @@ static int process_recv_ring(struct netmap_ring *rxring,
         }else {
             if (verbose > 1) D("echo: rx[%d] is DNS query", j);
             parse_addr(rxbuf, rxring->slot[j].len, iomsg);
+            f = 1;
+
 #ifdef NM_DEBUG
             g_recv_pks_count ++;
 #endif
-            f = 1;
-        }
-
-        if (rs->buf_idx < 2) {
-            //sleep(2);
         }
 
         /* copy the packet lenght. */
@@ -330,8 +328,8 @@ static int process_recv_ring(struct netmap_ring *rxring,
             D("recv len %d rx[%d]", rs->len, j);
 
         memcpy(iomsg->buff, rxbuf + 14 + 20 + 8, rs->len - 14 - 20 - 8);
-
         iomsg->n = rs->len - 14 - 20 - 8;
+
 NEXT_L:	
 
         j = NETMAP_RING_NEXT(rxring, j);
@@ -346,6 +344,77 @@ NEXT_L:
 
     return (m);
 }
+
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+static int process_recv_ring_single(struct netmap_ring *rxring, struct netmap_ring *txring,
+        u_int limit, io_msg_s *iomsg) 
+{
+    u_int j, m = 0;
+    u_int k =0, n = 0;
+    u_int f = 0;
+
+    j = rxring->cur; /* RX */
+    k = txring->cur;
+    if (rxring->avail < limit)
+        limit = rxring->avail;
+    while (m < limit) {
+        struct netmap_slot *rs = &rxring->slot[j];
+        struct netmap_slot *ts = &txring->slot[k];
+        char *rxbuf = NETMAP_BUF(rxring, rs->buf_idx);
+        unsigned int pkt;
+
+        assert( rs->len < iomsg->buff_len);
+
+        if (0 != is_dns_query(rxbuf, rs->len)) {
+            if (verbose > 1) D("rx[%d] is not DNS query", j);
+#ifdef NM_DEBUG
+            g_recv_non_dns_count ++;
+#endif
+            goto NEXT_L; /* best effort! */
+        }else {
+            if (verbose > 1) D("echo: rx[%d] is DNS query", j);
+            dns_packet_process(rxbuf, rxring->slot[j].len);
+            
+            f = 1;
+#ifdef NM_DEBUG
+            g_recv_pks_count ++;
+#endif
+        }
+
+        /* copy the packet lenght. */
+        if (rs->len < (14+20+8) || rs->len > 2048)
+            D("wrong len %d rx[%d] ", rs->len, j);
+        else if (verbose > 1)
+            D("recv len %d rx[%d]", rs->len, j);
+
+        pkt = ts->buf_idx;
+        ts->buf_idx = rs->buf_idx;
+        rs->buf_idx = pkt;
+        ts->len = rs->len;
+
+        /* report the buffer change. */
+        ts->flags |= NS_BUF_CHANGED;
+        k = NETMAP_RING_NEXT(txring, k);
+        n ++;
+
+        iomsg->n = rs->len - 14 - 20 - 8;
+NEXT_L:	
+
+        j = NETMAP_RING_NEXT(rxring, j);
+        m++;
+
+        rs->flags |= NS_BUF_CHANGED;
+
+        if (f == 1) break;
+    }
+    rxring->avail -= m;
+    rxring->cur = j;
+    txring->avail -= n;
+    txring->cur = k;
+
+    return (m);
+}
+#endif //  NM_DBG_RECV_ECHO_SINGLE
 
 static int process_send_ring(struct netmap_ring *txring,
         u_int limit, io_msg_s *iomsg)
@@ -387,6 +456,11 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
     struct netmap_ring *rxring;
     u_int m = 0, ri = src->begin;
 
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+    struct netmap_ring *txring;
+    u_int ti = src->begin;
+#endif
+    
 #ifdef NM_HAVE_RING_LOCK
     pthread_mutex_t *lock = NULL; 
 #endif
@@ -395,38 +469,31 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
     int flag = 0;
 #endif
 
-    while (ri < src->end) {
+    while (ri < src->end 
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+        && ti < src->end
+#endif
+            ) {
         rxring = NETMAP_RXRING(src->nifp, ri);
-
-#ifdef NM_HAVE_RING_LOCK
-        lock = (pthread_mutex_t*)rxring->lock;
-
-        if (lock != NULL && pthread_mutex_trylock(lock) == EBUSY)
-        {
-            ri ++;
-            continue;
-        }
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+        txring = NETMAP_TXRING(src->nifp, ti);
 #endif
 
         if (rxring->avail == 0) 
         {
-#ifdef NM_HAVE_RING_LOCK
-            if (lock != NULL)
-            {
-                pthread_mutex_unlock(lock);
-            }
-#endif
             ri ++;
             continue;
         }
 
-        m = process_recv_ring(rxring, limit, iomsg);
-
-#ifdef NM_HAVE_RING_LOCK
-        if (lock != NULL)
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+        if (txring->avail == 0) 
         {
-            pthread_mutex_unlock(lock);
+            ti ++;
+            continue;
         }
+        m = process_recv_ring_single(rxring, txring, limit, iomsg);
+#else
+        m = process_recv_ring(rxring, limit, iomsg);
 #endif
 
 #ifdef NM_DEBUG
@@ -450,49 +517,23 @@ static int netmap_send_to_ring(struct my_ring *src, io_msg_s *iomsg)
     struct netmap_ring *txring;
     u_int m = 0, times = 1, ti=src->begin;
 
-#ifdef NM_HAVE_RING_LOCK
-    pthread_mutex_t *lock = NULL; 
-#endif
-
 #ifdef NM_DEBUG
     int flag = 0;
 #endif
+
 LOOP_L:
     m = 0;
     ti=src->begin;
     while (ti < src->end) {
         txring = NETMAP_TXRING(src->nifp, ti);
  
-#ifdef NM_HAVE_RING_LOCK
-        lock = (pthread_mutex_t*)txring->lock;
-       
-        if (lock != NULL && pthread_mutex_trylock(lock) == EBUSY)
-        {
-            ti ++;
-            continue;
-        }
-#endif 
-
         if (txring->avail == 0) 
         {
-#ifdef NM_HAVE_RING_LOCK
-            if (lock != NULL)
-            {
-                pthread_mutex_unlock(lock);
-            }
-#endif
             ti++;
             continue;
         }   
 
         m = process_send_ring(txring, limit, iomsg);
-
-#ifdef NM_HAVE_RING_LOCK
-        if (lock != NULL)
-        {
-            pthread_mutex_unlock(lock);
-        }
-#endif
 
 #ifdef NM_DEBUG 
         flag = 1;
@@ -530,10 +571,8 @@ int netmap_recv(int fd, io_msg_s *iomsg )
     if (ring == NULL)
         return -1;
     
-#if  defined(NM_HAVE_MRING_LOCK)
-    pthread_mutex_lock(&ring->rxlock);
-#elif defined(NM_HAVE_G_LOCK)
-    pthread_mutex_lock(&g_recv_lock);
+#if defined(NM_HAVE_G_LOCK)
+    netmap_lock(&g_recv_lock);
 #endif
 
 #ifdef NM_DEBUG
@@ -547,10 +586,8 @@ int netmap_recv(int fd, io_msg_s *iomsg )
     ret = netmap_recv_from_ring(ring, iomsg);
 #endif 
 
-#if defined(NM_HAVE_MRING_LOCK)
-    pthread_mutex_unlock(&ring->rxlock);
-#elif defined(NM_HAVE_G_LOCK)
-    pthread_mutex_unlock(&g_recv_lock);
+#if defined(NM_HAVE_G_LOCK)
+    netmap_unlock(&g_recv_lock);
 #endif
 
     return ret;
@@ -565,10 +602,8 @@ int netmap_send(int fd, io_msg_s *iomsg)
     if (ring == NULL)
         return -1;
 
-#if defined(NM_HAVE_MRING_LOCK)
-    pthread_mutex_lock(&ring->txlock);
-#elif defined(NM_HAVE_G_LOCK)
-    pthread_mutex_lock(&g_send_lock);
+#if defined(NM_HAVE_G_LOCK)
+    netmap_lock(&g_send_lock);
 #endif
 
 #ifdef NM_DEBUG
@@ -577,10 +612,8 @@ int netmap_send(int fd, io_msg_s *iomsg)
 
     ret = netmap_send_to_ring(ring, iomsg);
 
-#if  defined(NM_HAVE_MRING_LOCK)
-    pthread_mutex_unlock(&ring->txlock);
-#elif defined(NM_HAVE_G_LOCK)
-     pthread_mutex_unlock(&g_send_lock);
+#if defined(NM_HAVE_G_LOCK)
+     netmap_unlock(&g_send_lock);
 #endif
 
     return ret;
@@ -588,22 +621,35 @@ int netmap_send(int fd, io_msg_s *iomsg)
 
 int netmap_init()
 {
-    if (pthread_mutex_trylock(&g_init_macaddr_lock) == EBUSY)
+    if (pthread_mutex_trylock(&g_netmap_init_lock) == EBUSY)
         return 0;
     
-    if (g_macaddr_inited == 1) return 0;
-    g_macaddr_inited = 1;
+    if (g_nm_inited == 1) return 0;
+    g_nm_inited = 1;
     
     printf(" BUILD AT: %s  %s\n", __DATE__, __TIME__);
 #ifdef NM_DBG_RECV_ECHO
-    printf(" NEMTAP DEBUG : USE RECV ECHO\n");
-#else 
-    printf(" NEMTAP DEBUG : USE SEND ECHO\n");
-#endif
-#ifdef NM_HAVE_G_LOCK
-    printf(" NETMAP LOCK: USE GLOBAL LOCK\n"); 
+    printf(" NEMTAP DEBUG : AT RECV ECHO\n");
+#elif defined(NM_DBG_RECV_ECHO_SINGLE)
+    printf(" NEMTAP DEBUG : AT RECV ECHO SINGLE\n");
+#elif defined(NM_DBG_SEND_ECHO)
+    printf(" NEMTAP DEBUG : AT SEND ECHO\n");
 #else
-    printf(" NETMAP LOCK: USE MRING  LOCK\n"); 
+    printf(" NEMTAP DEBUG : NETMAP RECV + BIND QUERY + NETMAP SEND\n");
+#endif
+    
+#ifdef NM_HAVE_G_LOCK
+    printf(" NETMAP LOCK: HAVE GLOBAL LOCK\n"); 
+#else
+    printf(" NETMAP LOCK: NO ANY LOCK\n"); 
+#endif
+
+#if defined(NM_USE_MUTEX_LOCK)
+    printf(" NETMAP LOCK LIB: USE MUTEX LOCK\n ");
+#elif defined(NM_USE_SPIN_LOCK)
+    printf(" NETMAP LOCK LIB: USE SPIN LOCK\n ");
+#else
+    assert(0);
 #endif
 
 #ifdef NM_DEBUG
@@ -611,14 +657,16 @@ int netmap_init()
     printf(" SIG NUM:%d\n", SIGNAL_NUM_PUT);
 #endif
     memset(g_macaddr_map, 0x0, MAC_ADDR_MAP_ITEMS * sizeof (macaddr_map_s));
+    
+    netmap_lock_init(&g_recv_lock);
+    netmap_lock_init(&g_send_lock);
 
-    pthread_mutex_unlock(&g_init_macaddr_lock);
+    pthread_mutex_unlock(&g_netmap_init_lock);
     
     return 0;
 }
 
-
-#if  defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_SEND_ECHO)
+#if  defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_RECV_ECHO_SINGLE) || defined(NM_DBG_SEND_ECHO)
 
 static int echo_dns_query(char *buff, int n)
 {
