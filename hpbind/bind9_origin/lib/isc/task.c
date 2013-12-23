@@ -661,7 +661,7 @@ dequeue_events(isc__task_t *task, void *sender, isc_eventtype_t first,
 	LOCK(&task->lock);
 
 	for (event = HEAD(task->events); event != NULL; event = next_event) {
-		    next_event = NEXT(event, ev_link);
+		next_event = NEXT(event, ev_link);
 		if (event->ev_type >= first && event->ev_type <= last &&
 		    (sender == NULL || event->ev_sender == sender) &&
 		    (tag == NULL || event->ev_tag == tag) &&

@@ -3,6 +3,8 @@
 #include "nm_util.h"
 #include "dns_util.h"
 
+static int verbose = 0;
+
 #ifdef NM_DEBUG
 #include <signal.h>
 static int g_recv_pks_count = 0;
@@ -34,9 +36,6 @@ void handle_signal(int no)
 static int nm_debug_echo(struct my_ring *src);
 #endif
 
-
-static int verbose = 0;
-
 #ifdef NM_HAVE_G_LOCK
 static pthread_mutex_t g_recv_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t g_send_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -45,7 +44,7 @@ static pthread_mutex_t g_send_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t g_init_macaddr_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_macaddr_inited = 0;
 
-#define MAC_ADDR_MAP_ITEMS 8
+#define MAC_ADDR_MAP_ITEMS 1024
 static macaddr_map_s g_macaddr_map[MAC_ADDR_MAP_ITEMS];
 static int g_macaddr_map_inited = 0;
 
@@ -199,7 +198,7 @@ static int parse_addr(char *buff, int len, io_msg_s *iomsg)
 
     if (verbose > 1)
     {
-        printf("parse addr : saddr:%ld, daddr:%d, sport:%d, dport:%d, qid:%d\n",
+        printf("parse addr : saddr:%ld, daddr:%d, sport:%d, dport:%d, qid:0x%x\n",
                 (unsigned int )iomsg->saddr, 
                 (unsigned int) iomsg->daddr, 
                 htons(iomsg->source), 
@@ -229,14 +228,32 @@ static int build_pkt_header(char *buff, int n, io_msg_s *iomsg)
     char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
     qid = ((unsigned short*) query)[0];
 
+#ifdef NM_DBG_SEND_ECHO
+    //chage DNS query flag 
+    query[2] |= 0x80;
+#endif
+
     // change Ethnet header
     {
         unsigned char smac[ETH_ALEN]={0};
         unsigned char dmac[ETH_ALEN]={0};
         struct ethhdr *eh = (struct ethhdr *)buff;
 
-        netmap_get_macmap(eh->h_source, eh->h_dest, 
+        int ret = netmap_get_macmap(eh->h_source, eh->h_dest, 
                 &ip->saddr, &udp->source, qid);
+
+        if (ret != 0)
+        {
+            printf("ret(%d). build smac:%x-%x-%x-%x-%x-%x," 
+                    "dmac:%x-%x-%x-%x-%x-%x,"
+                    "ip->saddr:%d, sport:%d, qid:0x%x\n",
+                    ret,
+                    eh->h_source[0],eh->h_source[1],eh->h_source[2],eh->h_source[3],eh->h_source[4],eh->h_source[5],
+                    eh->h_dest[0],eh->h_dest[1],eh->h_dest[2],eh->h_dest[3],eh->h_dest[4],eh->h_dest[5],
+                    (unsigned int )ip->saddr,
+                    htons(udp->source), qid);
+        }
+
     }
 
     //Change ip header
@@ -558,12 +575,7 @@ int netmap_send(int fd, io_msg_s *iomsg)
     g_send_sig_count ++;
 #endif
 
-#ifdef NM_DBG_SEND_ECHO
-    (void) iomsg;
-    ret = nm_debug_echo(ring);
-#else
     ret = netmap_send_to_ring(ring, iomsg);
-#endif
 
 #if  defined(NM_HAVE_MRING_LOCK)
     pthread_mutex_unlock(&ring->txlock);
@@ -581,7 +593,8 @@ int netmap_init()
     
     if (g_macaddr_inited == 1) return 0;
     g_macaddr_inited = 1;
-
+    
+    printf(" BUILD AT: %s  %s\n", __DATE__, __TIME__);
 #ifdef NM_DBG_RECV_ECHO
     printf(" NEMTAP DEBUG : USE RECV ECHO\n");
 #else 

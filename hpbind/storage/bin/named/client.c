@@ -57,9 +57,8 @@
 
 // added-by-db
 #ifdef IO_USE_NETMAP 
-#ifdef NM_DBG_SEND_ECHO
+#include "nm_util.h"
 #include "dns_util.h"
-#endif
 #endif
 
 /***
@@ -1408,11 +1407,6 @@ client_request(isc_task_t *task, isc_event_t *event) {
 
 	ns_client_requests++;
 
-// added-by-db
-#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO)
-    return netmap_send(client->udpsocket->fd, NULL); 
-#endif
-
 	if (event->ev_type == ISC_SOCKEVENT_RECVDONE) {
 		INSIST(!TCP_CLIENT(client));
 		sevent = (isc_socketevent_t *)event;
@@ -1929,6 +1923,32 @@ client_request(isc_task_t *task, isc_event_t *event) {
 	switch (client->message->opcode) {
 	case dns_opcode_query:
 		CTRACE("query");
+
+// added-by-db
+#ifdef IO_USE_NETMAP
+#ifdef NM_DBG_SEND_ECHO
+        {     
+            io_msg_s iomsg;
+            isc_buffer_t buff;
+            isc_buffer_init(&buff, sevent->region.base, sevent->n);
+            isc_buffer_add(&buff, sevent->n);
+
+            iomsg.buff = isc_buffer_current(&buff);
+            iomsg.buff_len = isc_buffer_usedlength(&buff);  //sevent->n;     
+            iomsg.daddr = client->peeraddr.type.sin.sin_addr.s_addr;
+            iomsg.dest = client->peeraddr.type.sin.sin_port;
+
+            client->nsends++;
+            ((isc_socketevent_t *) client->sendevent)->result = ISC_R_SUCCESS;
+
+            netmap_send(0, &iomsg);
+            client_senddone(client->task,
+                    (isc_event_t *)client->sendevent);
+            return ;
+        } 
+#endif
+#endif
+
 		ns_query_start(client);
 		break;
 	case dns_opcode_update:
