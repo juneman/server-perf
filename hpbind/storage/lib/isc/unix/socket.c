@@ -1781,20 +1781,18 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
     iomsg.buff_len = dev->region.length - dev->n;
     read_count = iomsg.buff_len;
 
-//#if defined(NM_DBG_SEND_ECHO)
-//    iomsg.n = read_count;
-//    iomsg.source = 456;
-//    iomsg.saddr = 1234567;
-//#else
     netmap_recv(sock->fd, &iomsg);
-//#endif
 
     cc = iomsg.n;
-
     {
         dev->address.type.sin.sin_family = AF_INET;
-        dev->address.type.sin.sin_port = iomsg.source;// TODO
-        dev->address.type.sin.sin_addr.s_addr = iomsg.saddr; // TODO
+        dev->address.type.sin.sin_port = iomsg.remote_port;
+        dev->address.type.sin.sin_addr.s_addr = iomsg.remote_addr; 
+
+        dev->location.local_port = iomsg.local_port;
+        dev->location.local_addr = iomsg.local_addr;
+        memcpy(dev->location.local_macaddr, iomsg.local_macaddr, 6);
+        memcpy(dev->location.remote_macaddr, iomsg.remote_macaddr, 6);
     }
 
     dev->address.length = sizeof(dev->address.type.sin6); 
@@ -2076,8 +2074,14 @@ doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev)
     iomsg.buff_len = dev->region.length - dev->n;
 
     {
-        iomsg.dest = dev->address.type.sin.sin_port;// TODO
-        iomsg.daddr = dev->address.type.sin.sin_addr.s_addr; // TODO
+        iomsg.remote_port = dev->address.type.sin.sin_port;// TODO
+        iomsg.remote_addr = dev->address.type.sin.sin_addr.s_addr; // TODO
+
+        iomsg.local_port = dev->location.local_port;
+        iomsg.local_addr = dev->location.local_addr;
+        memcpy(iomsg.local_macaddr, dev->location.local_macaddr, 6);
+        memcpy(iomsg.remote_macaddr, dev->location.remote_macaddr, 6);
+
     }
 
     netmap_send(sock->fd, &iomsg);

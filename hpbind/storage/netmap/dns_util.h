@@ -28,27 +28,20 @@
 #include "net/netmap_user.h"
 
 #include "nm_util.h"
+#include "build.h"
 
 typedef struct _io_msg_s_ {
     char *buff;  // read/write buffer
     int buff_len; // length of buff
     int n; // read/write n bytes from/to netmap
-    unsigned int saddr;
-    unsigned int daddr;
-    unsigned short source;
-    unsigned short dest;
-}io_msg_s;
+    unsigned int local_addr;
+    unsigned int remote_addr;
+    unsigned short local_port;
+    unsigned short remote_port;
+    unsigned char local_macaddr[6];
+    unsigned char remote_macaddr[6];
 
-typedef struct _macaddr_map_s_ {
-    char smac[6]; // local mac addr
-    char dmac[6]; // remote mac addr
-    char dirty;
-    char pad1;
-    unsigned short qid; // dns query id
-    unsigned int saddr; // local ip addr
-    unsigned short source; // local udp port
-    char pad2[2];
-}macaddr_map_s;
+}io_msg_s;
 
 int netmap_init();
 int netmap_recv(int fd, io_msg_s *iomsg);

@@ -3,7 +3,7 @@
 #include "nm_util.h"
 #include "dns_util.h"
 
-static int verbose = 0;
+static int verbose = -11;
 
 #ifdef NM_DEBUG
 #include <signal.h>
@@ -45,75 +45,9 @@ static netmap_lock_t g_send_lock;
 static pthread_mutex_t g_netmap_init_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_nm_inited = 0;
 
-#define MAC_ADDR_MAP_ITEMS 1024
-static macaddr_map_s g_macaddr_map[MAC_ADDR_MAP_ITEMS];
-
 static char g_pkt_header[14 + 20 + 8] = {0};
 static int g_pkt_header_inited = 0;
 static unsigned short g_ip_id_next = 0x12a;
-
-static int netmap_add_macaddr(char *smac, char *dmac, 
-        unsigned int saddr, unsigned short source,
-        unsigned short qid)
-{
-    int i = 0;
-    macaddr_map_s *m = &g_macaddr_map[i];
-
-    for (i = 0; i < MAC_ADDR_MAP_ITEMS; i++ ) 
-    {
-        m = &g_macaddr_map[i];
-        if (m->dirty == 0 ) 
-        {
-            memcpy(m->smac, smac, 6);
-            memcpy(m->dmac, dmac, 6);
-            m->saddr = saddr;
-            m->source = source;
-            m->qid = qid;
-            m->dirty = 1;
-            return 0;
-        }
-    }
-
-    {
-        memcpy(m->smac, smac, 6);
-        memcpy(m->dmac, dmac, 6);
-        m->saddr = saddr;
-        m->source = source;
-        m->qid = qid;
-        m->dirty = 1;
-    }
-
-    return 0;
-}
-
-static int netmap_get_macmap(char *smac, char *dmac, 
-        unsigned int *saddr,  unsigned short *source,
-        unsigned short qid)
-{
-    int i = 0;
-    macaddr_map_s *m = NULL;
-
-    assert(smac != NULL);
-    assert(dmac != NULL);
-    assert(saddr != NULL);
-    assert(source != NULL);
-
-    for (i = 0; i < MAC_ADDR_MAP_ITEMS; i++ ) 
-    {
-        m = &g_macaddr_map[i];
-        if (m->qid == qid ) 
-        {
-            memcpy(smac, m->smac, 6);
-            memcpy(dmac, m->dmac, 6);
-            *saddr = m->saddr;
-            *source = m->source;
-            m->dirty = 0;
-            return 0;
-        }
-    }
-
-    return -1;
-}
 
 struct pesudo_udphdr { 
     unsigned int saddr, daddr; 
@@ -191,18 +125,31 @@ static int parse_addr(char *buff, int len, io_msg_s *iomsg)
 
     qid = ((unsigned short*) query)[0];
 
-    iomsg->saddr = ip->saddr;
-    iomsg->daddr = ip->daddr;
-    iomsg->source = udp->source;
-    iomsg->dest = udp->dest;
-
-    if (verbose > 1)
     {
-        printf("parse addr : saddr:%ld, daddr:%d, sport:%d, dport:%d, qid:0x%x\n",
-                (unsigned int )iomsg->saddr, 
-                (unsigned int) iomsg->daddr, 
-                htons(iomsg->source), 
-                htons(iomsg->dest), qid);
+        iomsg->remote_addr = ip->saddr;
+        iomsg->local_addr = ip->daddr;
+        iomsg->remote_port = udp->source;
+        iomsg->local_port = udp->dest;
+
+        memcpy(iomsg->local_macaddr, buff, 6);
+        memcpy(iomsg->remote_macaddr, buff + 6, 6);
+    }
+
+    if (verbose > -1)
+    {
+        printf("parse addr : remote addr:%ld, local addr:%d, remote port:%d, local port:%d, "
+                " remote mac:-%x-%x-%x, local mac:-%x-%x-%x, "
+                "qid:0x%x\n",
+                (unsigned int )iomsg->remote_addr, 
+                (unsigned int) iomsg->local_addr, 
+                htons(iomsg->remote_port), htons(iomsg->local_port), 
+                iomsg->remote_macaddr[3],
+                iomsg->remote_macaddr[4],
+                iomsg->remote_macaddr[5],
+                iomsg->local_macaddr[3],
+                iomsg->local_macaddr[4],
+                iomsg->local_macaddr[5],
+                qid);
     }
 
     if (g_pkt_header_inited == 0)
@@ -210,8 +157,6 @@ static int parse_addr(char *buff, int len, io_msg_s *iomsg)
         g_pkt_header_inited = 1;
         memcpy(g_pkt_header, buff, 14 + 20 + 8);
     }
-
-    netmap_add_macaddr(buff, buff + 6, ip->daddr, udp->dest, qid); 
 
     return 0;
 }
@@ -235,36 +180,53 @@ static int build_pkt_header(char *buff, int n, io_msg_s *iomsg)
 
     // change Ethnet header
     {
-        unsigned char smac[ETH_ALEN]={0};
-        unsigned char dmac[ETH_ALEN]={0};
+        memcpy(buff, iomsg->remote_macaddr, 6);
+        memcpy(buff + 6, iomsg->local_macaddr, 6);
+
         struct ethhdr *eh = (struct ethhdr *)buff;
-
-        int ret = netmap_get_macmap(eh->h_source, eh->h_dest, 
-                &ip->saddr, &udp->source, qid);
-
-        if (ret != 0)
+        if (verbose > -1)
         {
-            printf("ret(%d). build smac:%x-%x-%x-%x-%x-%x," 
-                    "dmac:%x-%x-%x-%x-%x-%x,"
-                    "ip->saddr:%d, sport:%d, qid:0x%x\n",
-                    ret,
+            printf("build local mac:%x-%x-%x-%x-%x-%x," 
+                    "remote mac:%x-%x-%x-%x-%x-%x\n",
+                    iomsg->local_macaddr[0],
+                    iomsg->local_macaddr[1],
+                    iomsg->local_macaddr[2],
+                    iomsg->local_macaddr[3],
+                    iomsg->local_macaddr[4],
+                    iomsg->local_macaddr[5],
+                    iomsg->remote_macaddr[0],
+                    iomsg->remote_macaddr[1],
+                    iomsg->remote_macaddr[2],
+                    iomsg->remote_macaddr[3],
+                    iomsg->remote_macaddr[4],
+                    iomsg->remote_macaddr[5]);
+
+            printf("build local mac:%x-%x-%x-%x-%x-%x," 
+                    "remote mac:%x-%x-%x-%x-%x-%x,"
+                    "local addr:%d,remote addr:%d, "
+                    "local port:%d, remote port:%d, qid:0x%x\n",
                     eh->h_source[0],eh->h_source[1],eh->h_source[2],eh->h_source[3],eh->h_source[4],eh->h_source[5],
                     eh->h_dest[0],eh->h_dest[1],eh->h_dest[2],eh->h_dest[3],eh->h_dest[4],eh->h_dest[5],
-                    (unsigned int )ip->saddr,
-                    htons(udp->source), qid);
+                    (unsigned int )iomsg->local_addr,
+                    (unsigned int )iomsg->remote_addr,
+                    htons(iomsg->local_port), 
+                    htons(iomsg->remote_port), 
+                    qid);
         }
 
     }
 
     //Change ip header
-    ip->daddr = iomsg->daddr;
+    ip->daddr = iomsg->remote_addr;
+    ip->saddr = iomsg->local_addr;
     ip->tot_len = htons(n - 14);
     ip->id = (++g_ip_id_next & 0xFFFF);
     ip->check = 0;
     ip->check = in_cksum((unsigned short *)ip_buff, sizeof(struct iphdr));  
 
     // change UDP header
-    udp->dest = iomsg->dest;
+    udp->dest = iomsg->remote_port;
+    udp->source = iomsg->local_port;
     udp->check = 0;
 
     {
@@ -374,7 +336,7 @@ static int process_recv_ring_single(struct netmap_ring *rxring, struct netmap_ri
         }else {
             if (verbose > 1) D("echo: rx[%d] is DNS query", j);
             dns_packet_process(rxbuf, rxring->slot[j].len);
-            
+
             f = 1;
 #ifdef NM_DEBUG
             g_recv_pks_count ++;
@@ -439,7 +401,7 @@ static int process_send_ring(struct netmap_ring *txring,
         m++;
 
 #ifdef NM_DEBUG
-g_send_pks_count ++;
+        g_send_pks_count ++;
 #endif
         iomsg->n = iomsg->buff_len;
         break;
@@ -460,7 +422,7 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
     struct netmap_ring *txring;
     u_int ti = src->begin;
 #endif
-    
+
 #ifdef NM_HAVE_RING_LOCK
     pthread_mutex_t *lock = NULL; 
 #endif
@@ -471,9 +433,9 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
 
     while (ri < src->end 
 #ifdef NM_DBG_RECV_ECHO_SINGLE
-        && ti < src->end
+            && ti < src->end
 #endif
-            ) {
+          ) {
         rxring = NETMAP_RXRING(src->nifp, ri);
 #ifdef NM_DBG_RECV_ECHO_SINGLE
         txring = NETMAP_TXRING(src->nifp, ti);
@@ -526,7 +488,7 @@ LOOP_L:
     ti=src->begin;
     while (ti < src->end) {
         txring = NETMAP_TXRING(src->nifp, ti);
- 
+
         if (txring->avail == 0) 
         {
             ti++;
@@ -570,7 +532,7 @@ int netmap_recv(int fd, io_msg_s *iomsg )
     ring = netmap_getring(fd);
     if (ring == NULL)
         return -1;
-    
+
 #if defined(NM_HAVE_G_LOCK)
     netmap_lock(&g_recv_lock);
 #endif
@@ -613,7 +575,7 @@ int netmap_send(int fd, io_msg_s *iomsg)
     ret = netmap_send_to_ring(ring, iomsg);
 
 #if defined(NM_HAVE_G_LOCK)
-     netmap_unlock(&g_send_lock);
+    netmap_unlock(&g_send_lock);
 #endif
 
     return ret;
@@ -623,11 +585,13 @@ int netmap_init()
 {
     if (pthread_mutex_trylock(&g_netmap_init_lock) == EBUSY)
         return 0;
-    
+
     if (g_nm_inited == 1) return 0;
     g_nm_inited = 1;
-    
-    printf(" BUILD AT: %s  %s\n", __DATE__, __TIME__);
+
+#ifdef __BUILD_TIME 
+    printf(" BUILD AT: %s\n", __BUILD_TIME);
+#endif
 #ifdef NM_DBG_RECV_ECHO
     printf(" NEMTAP DEBUG : AT RECV ECHO\n");
 #elif defined(NM_DBG_RECV_ECHO_SINGLE)
@@ -637,7 +601,7 @@ int netmap_init()
 #else
     printf(" NEMTAP DEBUG : NETMAP RECV + BIND QUERY + NETMAP SEND\n");
 #endif
-    
+
 #ifdef NM_HAVE_G_LOCK
     printf(" NETMAP LOCK: HAVE GLOBAL LOCK\n"); 
 #else
@@ -656,13 +620,12 @@ int netmap_init()
     signal(SIGNAL_NUM_PUT, handle_signal);
     printf(" SIG NUM:%d\n", SIGNAL_NUM_PUT);
 #endif
-    memset(g_macaddr_map, 0x0, MAC_ADDR_MAP_ITEMS * sizeof (macaddr_map_s));
-    
+
     netmap_lock_init(&g_recv_lock);
     netmap_lock_init(&g_send_lock);
 
     pthread_mutex_unlock(&g_netmap_init_lock);
-    
+
     return 0;
 }
 
@@ -717,7 +680,7 @@ static int echo_dns_query(char *buff, int n)
     {
         unsigned char mac_temp[ETH_ALEN]={0};
         struct ethhdr *eh = (struct ethhdr *)buff;
-        
+
         memcpy(mac_temp,eh->h_dest,ETH_ALEN);
         memcpy(eh->h_dest, eh->h_source, ETH_ALEN);
         memcpy(eh->h_source, mac_temp, ETH_ALEN);
@@ -741,7 +704,7 @@ static int process_rings(struct netmap_ring *rxring,
 {
     u_int j, k, m = 0;
     u_int f = 0;
-    
+
     j = rxring->cur; /* RX */
     k = txring->cur; /* TX */
     if (rxring->avail < limit)
@@ -794,7 +757,7 @@ static int nm_debug_echo(struct my_ring *src)
     while (si < src->end && di < src->end) {
         rxring = NETMAP_RXRING(src->nifp, si);
         txring = NETMAP_TXRING(src->nifp, di);
-       
+
         if (rxring->avail == 0) {
             si++;
             continue;

@@ -1417,6 +1417,12 @@ client_request(isc_task_t *task, isc_event_t *event) {
 		INSIST(!TCP_CLIENT(client));
 		sevent = (isc_socketevent_t *)event;
 		REQUIRE(sevent == client->recvevent);
+
+// added-by-db
+#ifdef IO_USE_NETMAP
+        client->sendevent->location = client->recvevent->location; 
+#endif
+
 		isc_buffer_init(&tbuffer, sevent->region.base, sevent->n);
 		isc_buffer_add(&tbuffer, sevent->n);
 		buffer = &tbuffer;

@@ -170,6 +170,18 @@ struct isc_socketevent {
 	struct in6_pktinfo	pktinfo;	/*%< ipv6 pktinfo */
 	isc_uint32_t		attributes;	/*%< see below */
 	isc_eventdestructor_t   destroy;	/*%< original destructor */
+
+    // added-by-db
+#ifdef IO_USE_NETMAP
+    struct
+    {
+        unsigned char local_macaddr[6];
+        unsigned char remote_macaddr[6];
+        unsigned char pad[2];
+        unsigned short local_port;
+        unsigned int local_addr;
+    }location;
+#endif
 };
 
 typedef struct isc_socket_newconnev isc_socket_newconnev_t;
