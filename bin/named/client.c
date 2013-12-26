@@ -723,9 +723,15 @@ ns_client_next(ns_client_t *client, isc_result_t result) {
 	(void)exit_check(client);
 }
 
-
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO)
+void
+client_senddone(isc_task_t *task, isc_event_t *event) {
+#else
 static void
 client_senddone(isc_task_t *task, isc_event_t *event) {
+#endif
+
+
 	ns_client_t *client;
 	isc_socketevent_t *sevent = (isc_socketevent_t *) event;
 
@@ -1938,13 +1944,18 @@ client_request(isc_task_t *task, isc_event_t *event) {
             iomsg.daddr = client->peeraddr.type.sin.sin_addr.s_addr;
             iomsg.dest = client->peeraddr.type.sin.sin_port;
 
+#if (NM_DBG_SEND_ECHO_STEP <= 1)
             client->nsends++;
             ((isc_socketevent_t *) client->sendevent)->result = ISC_R_SUCCESS;
 
             netmap_send(0, &iomsg);
             client_senddone(client->task,
                     (isc_event_t *)client->sendevent);
-            return ;
+            return;
+#else
+            ns_netmap_query_start(client, &iomsg);
+            return;
+#endif            
         } 
 #endif
 #endif

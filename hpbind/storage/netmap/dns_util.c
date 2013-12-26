@@ -633,7 +633,7 @@ int netmap_init()
 #elif defined(NM_DBG_RECV_ECHO_SINGLE)
     printf(" NEMTAP DEBUG : AT RECV ECHO SINGLE\n");
 #elif defined(NM_DBG_SEND_ECHO)
-    printf(" NEMTAP DEBUG : AT SEND ECHO\n");
+    printf(" NEMTAP DEBUG : AT SEND ECHO :%d\n", NM_DBG_SEND_ECHO_STEP);
 #else
     printf(" NEMTAP DEBUG : NETMAP RECV + BIND QUERY + NETMAP SEND\n");
 #endif
