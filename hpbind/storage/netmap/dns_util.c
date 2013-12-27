@@ -1,46 +1,15 @@
-#include <assert.h>
-#include <pthread.h>
-#include "nm_util.h"
+/**
+ * File: dns_util.c
+ *
+ * author: db
+ *
+ */
 #include "dns_util.h"
 
 static int verbose = -11;
 
-#ifdef NM_DEBUG
-#include <signal.h>
-static int g_recv_pks_count = 0;
-static int g_send_pks_count = 0;
-
-static int g_recv_sig_count = 0;
-static int g_send_sig_count = 0;
-
-static int g_tx_ring_busy_count = 0;
-static int g_rx_ring_busy_count = 0;
-static int g_recv_non_dns_count = 0;
-
-#define SIGNAL_NUM_PUT SIGUSR1 + 1 
-void handle_signal(int no)
-{
-    if (no == SIGNAL_NUM_PUT)
-    {
-        printf("recv sig:%d\nsend sig:%d\n", g_recv_sig_count, g_send_sig_count);
-        printf("recv pks:%d\nsend pks:%d\n", g_recv_pks_count, g_send_pks_count);
-        printf("recv non dns pks:%d\n", g_recv_non_dns_count);
-        printf("tx ring busy count:%d\n", g_tx_ring_busy_count);
-        printf("rx ring busy count:%d\n", g_rx_ring_busy_count);
-
-    }
-}
-#endif // NM_DEBUG
-
-#if defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_RECV_ECHO_SINGLE) || defined(NM_DBG_SEND_ECHO)
-static int nm_debug_echo(struct my_ring *src);
-static int dns_packet_process(char *buff, int len);
-#endif
-
-#ifdef NM_HAVE_G_LOCK
 static netmap_lock_t g_recv_lock;
 static netmap_lock_t g_send_lock;
-#endif
 
 static pthread_mutex_t g_netmap_init_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_nm_inited = 0;
@@ -86,24 +55,29 @@ static int is_dns_query(char *buff, int len)
     ip = (struct iphdr*) (ip_buff);
     udp = (struct udphdr *) (ip_buff + sizeof(struct iphdr));
 
-    if (eh->h_proto != ntohs(0x0800))
+    if (len < 14 + 20 + 8 + 8) 
     {
         return 1;
     }
 
-    if (ip->protocol != IPPROTO_UDP )
+    if (eh->h_proto != ntohs(0x0800))
     {
         return 2;
     }
 
-    if (udp->dest != ntohs(53))
+    if (ip->protocol != IPPROTO_UDP )
     {
         return 3;
     }
 
-    char *p = (ip_buff ) + 12;               
+    if (udp->dest != ntohs(53))
+    {
+        return 4;
+    }
+
     if (verbose > 1)
     {
+        char *p = (ip_buff ) + 12;               
         printf("recv:%d, IP:%d.%d.%d.%d:%d => %d.%d.%d.%d:%d\n", len,
                 p[0]&0XFF,p[1]&0XFF,p[2]&0XFF,p[3]&0XFF, htons(udp->source),
                 p[4]&0XFF,p[5]&0XFF,p[6]&0XFF,p[7]&0XFF, htons(udp->dest)); 
@@ -116,14 +90,10 @@ static int parse_addr(char *buff, int len, io_msg_s *iomsg)
 {
     struct iphdr *ip;
     struct udphdr *udp;
-    unsigned short qid;
     char *ip_buff = buff + 14;
 
     ip = (struct iphdr*) (ip_buff);
     udp = (struct udphdr *) (ip_buff + sizeof(struct iphdr));
-    char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
-
-    qid = ((unsigned short*) query)[0];
 
     {
         iomsg->remote_addr = ip->saddr;
@@ -137,6 +107,8 @@ static int parse_addr(char *buff, int len, io_msg_s *iomsg)
 
     if (verbose > -1)
     {
+        char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
+        unsigned short qid = ((unsigned short*) query)[0];
         printf("parse addr : remote addr:%ld, local addr:%d, remote port:%d, local port:%d, "
                 " remote mac:-%x-%x-%x, local mac:-%x-%x-%x, "
                 "qid:0x%x\n",
@@ -152,6 +124,7 @@ static int parse_addr(char *buff, int len, io_msg_s *iomsg)
                 qid);
     }
 
+    // because under lock
     if (g_pkt_header_inited == 0)
     {
         g_pkt_header_inited = 1;
@@ -173,12 +146,7 @@ static int build_pkt_header(char *buff, int n, io_msg_s *iomsg)
     char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
     qid = ((unsigned short*) query)[0];
 
-#ifdef NM_DBG_SEND_ECHO
-    //chage DNS query flag 
-    query[2] |= 0x80;
-#endif
-
-    // change Ethnet header
+    // Filling Ethnet header
     {
         memcpy(buff, iomsg->remote_macaddr, 6);
         memcpy(buff + 6, iomsg->local_macaddr, 6);
@@ -186,21 +154,6 @@ static int build_pkt_header(char *buff, int n, io_msg_s *iomsg)
         struct ethhdr *eh = (struct ethhdr *)buff;
         if (verbose > -1)
         {
-            printf("build local mac:%x-%x-%x-%x-%x-%x," 
-                    "remote mac:%x-%x-%x-%x-%x-%x\n",
-                    iomsg->local_macaddr[0],
-                    iomsg->local_macaddr[1],
-                    iomsg->local_macaddr[2],
-                    iomsg->local_macaddr[3],
-                    iomsg->local_macaddr[4],
-                    iomsg->local_macaddr[5],
-                    iomsg->remote_macaddr[0],
-                    iomsg->remote_macaddr[1],
-                    iomsg->remote_macaddr[2],
-                    iomsg->remote_macaddr[3],
-                    iomsg->remote_macaddr[4],
-                    iomsg->remote_macaddr[5]);
-
             printf("build local mac:%x-%x-%x-%x-%x-%x," 
                     "remote mac:%x-%x-%x-%x-%x-%x,"
                     "local addr:%d,remote addr:%d, "
@@ -213,10 +166,9 @@ static int build_pkt_header(char *buff, int n, io_msg_s *iomsg)
                     htons(iomsg->remote_port), 
                     qid);
         }
-
     }
 
-    //Change ip header
+    // Filling ip header
     ip->daddr = iomsg->remote_addr;
     ip->saddr = iomsg->local_addr;
     ip->tot_len = htons(n - 14);
@@ -224,11 +176,12 @@ static int build_pkt_header(char *buff, int n, io_msg_s *iomsg)
     ip->check = 0;
     ip->check = in_cksum((unsigned short *)ip_buff, sizeof(struct iphdr));  
 
-    // change UDP header
+    // Filling UDP header
     udp->dest = iomsg->remote_port;
     udp->source = iomsg->local_port;
     udp->check = 0;
 
+    // Calculate udp checksum
     {
         int udp_len = n - sizeof(struct iphdr ) - 14;
         udp->len = htons(udp_len);
@@ -248,14 +201,12 @@ static int build_pkt_header(char *buff, int n, io_msg_s *iomsg)
     }
 
     return 0;
-
 }
 
 static int process_recv_ring(struct netmap_ring *rxring, 
         u_int limit, io_msg_s *iomsg) 
 {
     u_int j, m = 0;
-
     u_int f = 0;
 
     j = rxring->cur; /* RX */
@@ -269,18 +220,11 @@ static int process_recv_ring(struct netmap_ring *rxring,
 
         if (0 != is_dns_query(rxbuf, rs->len)) {
             if (verbose > 1) D("rx[%d] is not DNS query", j);
-#ifdef NM_DEBUG
-            g_recv_non_dns_count ++;
-#endif
             goto NEXT_L; /* best effort! */
         }else {
             if (verbose > 1) D("echo: rx[%d] is DNS query", j);
             parse_addr(rxbuf, rxring->slot[j].len, iomsg);
             f = 1;
-
-#ifdef NM_DEBUG
-            g_recv_pks_count ++;
-#endif
         }
 
         /* copy the packet lenght. */
@@ -293,7 +237,6 @@ static int process_recv_ring(struct netmap_ring *rxring,
         iomsg->n = rs->len - 14 - 20 - 8;
 
 NEXT_L:	
-
         j = NETMAP_RING_NEXT(rxring, j);
         m++;
 
@@ -306,77 +249,6 @@ NEXT_L:
 
     return (m);
 }
-
-#ifdef NM_DBG_RECV_ECHO_SINGLE
-static int process_recv_ring_single(struct netmap_ring *rxring, struct netmap_ring *txring,
-        u_int limit, io_msg_s *iomsg) 
-{
-    u_int j, m = 0;
-    u_int k =0, n = 0;
-    u_int f = 0;
-
-    j = rxring->cur; /* RX */
-    k = txring->cur;
-    if (rxring->avail < limit)
-        limit = rxring->avail;
-    while (m < limit) {
-        struct netmap_slot *rs = &rxring->slot[j];
-        struct netmap_slot *ts = &txring->slot[k];
-        char *rxbuf = NETMAP_BUF(rxring, rs->buf_idx);
-        unsigned int pkt;
-
-        assert( rs->len < iomsg->buff_len);
-
-        if (0 != is_dns_query(rxbuf, rs->len)) {
-            if (verbose > 1) D("rx[%d] is not DNS query", j);
-#ifdef NM_DEBUG
-            g_recv_non_dns_count ++;
-#endif
-            goto NEXT_L; /* best effort! */
-        }else {
-            if (verbose > 1) D("echo: rx[%d] is DNS query", j);
-            dns_packet_process(rxbuf, rxring->slot[j].len);
-
-            f = 1;
-#ifdef NM_DEBUG
-            g_recv_pks_count ++;
-#endif
-        }
-
-        /* copy the packet lenght. */
-        if (rs->len < (14+20+8) || rs->len > 2048)
-            D("wrong len %d rx[%d] ", rs->len, j);
-        else if (verbose > 1)
-            D("recv len %d rx[%d]", rs->len, j);
-
-        pkt = ts->buf_idx;
-        ts->buf_idx = rs->buf_idx;
-        rs->buf_idx = pkt;
-        ts->len = rs->len;
-
-        /* report the buffer change. */
-        ts->flags |= NS_BUF_CHANGED;
-        k = NETMAP_RING_NEXT(txring, k);
-        n ++;
-
-        iomsg->n = rs->len - 14 - 20 - 8;
-NEXT_L:	
-
-        j = NETMAP_RING_NEXT(rxring, j);
-        m++;
-
-        rs->flags |= NS_BUF_CHANGED;
-
-        if (f == 1) break;
-    }
-    rxring->avail -= m;
-    rxring->cur = j;
-    txring->avail -= n;
-    txring->cur = k;
-
-    return (m);
-}
-#endif //  NM_DBG_RECV_ECHO_SINGLE
 
 static int process_send_ring(struct netmap_ring *txring,
         u_int limit, io_msg_s *iomsg)
@@ -400,9 +272,6 @@ static int process_send_ring(struct netmap_ring *txring,
         ts->flags |= NS_BUF_CHANGED;
         m++;
 
-#ifdef NM_DEBUG
-        g_send_pks_count ++;
-#endif
         iomsg->n = iomsg->buff_len;
         break;
     }
@@ -418,57 +287,18 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
     struct netmap_ring *rxring;
     u_int m = 0, ri = src->begin;
 
-#ifdef NM_DBG_RECV_ECHO_SINGLE
-    struct netmap_ring *txring;
-    u_int ti = src->begin;
-#endif
-
-#ifdef NM_HAVE_RING_LOCK
-    pthread_mutex_t *lock = NULL; 
-#endif
-
-#ifdef NM_DEBUG
-    int flag = 0;
-#endif
-
-    while (ri < src->end 
-#ifdef NM_DBG_RECV_ECHO_SINGLE
-            && ti < src->end
-#endif
-          ) {
+    while (ri < src->end) 
+    {
         rxring = NETMAP_RXRING(src->nifp, ri);
-#ifdef NM_DBG_RECV_ECHO_SINGLE
-        txring = NETMAP_TXRING(src->nifp, ti);
-#endif
-
         if (rxring->avail == 0) 
         {
             ri ++;
             continue;
         }
 
-#ifdef NM_DBG_RECV_ECHO_SINGLE
-        if (txring->avail == 0) 
-        {
-            ti ++;
-            continue;
-        }
-        m = process_recv_ring_single(rxring, txring, limit, iomsg);
-#else
         m = process_recv_ring(rxring, limit, iomsg);
-#endif
-
-#ifdef NM_DEBUG
-        flag = 1;
-#endif
-
         break;
     }
-
-#ifdef NM_DEBUG
-    if (flag == 0)
-        g_rx_ring_busy_count ++;
-#endif
 
     return (m);
 }
@@ -477,11 +307,8 @@ static int netmap_send_to_ring(struct my_ring *src, io_msg_s *iomsg)
 {
     int limit = 512;
     struct netmap_ring *txring;
-    u_int m = 0, times = 1, ti=src->begin;
-
-#ifdef NM_DEBUG
-    int flag = 0;
-#endif
+    u_int m = 0, ti=src->begin;
+    int times = 1;
 
 LOOP_L:
     m = 0;
@@ -497,10 +324,6 @@ LOOP_L:
 
         m = process_send_ring(txring, limit, iomsg);
 
-#ifdef NM_DEBUG 
-        flag = 1;
-#endif
-
         break;
     }
 
@@ -514,12 +337,14 @@ LOOP_L:
         req.nr_ringid = 0;
         err = ioctl(src->fd, NIOCTXSYNC, &req);
         times --;
+        
+        {
+            int delay = 100000;
+            int busy = 0;
+            while(--delay > 0) {busy ++;}
+        }
         goto LOOP_L;
     }
-#ifdef NM_DEBUG 
-    if (flag == 0) 
-        g_tx_ring_busy_count ++;
-#endif
 
     return (m);
 }
@@ -533,24 +358,9 @@ int netmap_recv(int fd, io_msg_s *iomsg )
     if (ring == NULL)
         return -1;
 
-#if defined(NM_HAVE_G_LOCK)
     netmap_lock(&g_recv_lock);
-#endif
-
-#ifdef NM_DEBUG
-    g_recv_sig_count ++;
-#endif
-
-#ifdef NM_DBG_RECV_ECHO
-    (void) iomsg;
-    ret = nm_debug_echo(ring);
-#else
     ret = netmap_recv_from_ring(ring, iomsg);
-#endif 
-
-#if defined(NM_HAVE_G_LOCK)
     netmap_unlock(&g_recv_lock);
-#endif
 
     return ret;
 }
@@ -564,19 +374,9 @@ int netmap_send(int fd, io_msg_s *iomsg)
     if (ring == NULL)
         return -1;
 
-#if defined(NM_HAVE_G_LOCK)
     netmap_lock(&g_send_lock);
-#endif
-
-#ifdef NM_DEBUG
-    g_send_sig_count ++;
-#endif
-
     ret = netmap_send_to_ring(ring, iomsg);
-
-#if defined(NM_HAVE_G_LOCK)
     netmap_unlock(&g_send_lock);
-#endif
 
     return ret;
 }
@@ -592,21 +392,6 @@ int netmap_init()
 #ifdef __BUILD_TIME 
     printf(" BUILD AT: %s\n", __BUILD_TIME);
 #endif
-#ifdef NM_DBG_RECV_ECHO
-    printf(" NEMTAP DEBUG : AT RECV ECHO\n");
-#elif defined(NM_DBG_RECV_ECHO_SINGLE)
-    printf(" NEMTAP DEBUG : AT RECV ECHO SINGLE\n");
-#elif defined(NM_DBG_SEND_ECHO)
-    printf(" NEMTAP DEBUG : AT SEND ECHO :%d\n", NM_DBG_SEND_ECHO_STEP);
-#else
-    printf(" NEMTAP DEBUG : NETMAP RECV + BIND QUERY + NETMAP SEND\n");
-#endif
-
-#ifdef NM_HAVE_G_LOCK
-    printf(" NETMAP LOCK: HAVE GLOBAL LOCK\n"); 
-#else
-    printf(" NETMAP LOCK: NO ANY LOCK\n"); 
-#endif
 
 #if defined(NM_USE_MUTEX_LOCK)
     printf(" NETMAP LOCK LIB: USE MUTEX LOCK\n ");
@@ -616,11 +401,6 @@ int netmap_init()
     assert(0);
 #endif
 
-#ifdef NM_DEBUG
-    signal(SIGNAL_NUM_PUT, handle_signal);
-    printf(" SIG NUM:%d\n", SIGNAL_NUM_PUT);
-#endif
-
     netmap_lock_init(&g_recv_lock);
     netmap_lock_init(&g_send_lock);
 
@@ -628,149 +408,3 @@ int netmap_init()
 
     return 0;
 }
-
-#if  defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_RECV_ECHO_SINGLE) || defined(NM_DBG_SEND_ECHO)
-
-static int echo_dns_query(char *buff, int n)
-{
-    u_int32_t tmpaddr;
-    u_int16_t tmpport;
-    char check_buf[512] = {0};
-
-    char *ip_buff = buff + 14;
-
-    struct iphdr* ip = (struct iphdr*)ip_buff; 
-    struct udphdr * udp = (struct udphdr*) (ip_buff + sizeof(struct iphdr ));
-    char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
-
-    //chage DNS query flag 
-    query[2] |= 0x80;
-
-    //Change ip header
-    tmpaddr = ip->saddr;
-    ip->saddr = ip->daddr;
-    ip->daddr = tmpaddr;
-    ip->check = 0;
-    ip->check = in_cksum((unsigned short *)ip_buff, sizeof(struct iphdr));  
-
-    // change UDP header
-    tmpport = udp->source;
-    udp->source = udp->dest;
-    udp->dest = tmpport;
-    udp->check = 0;
-
-    {
-        int udp_len = n - sizeof(struct iphdr ) - 14;
-
-        memset(check_buf, 0x0, 512);
-        memcpy(check_buf + sizeof(struct pesudo_udphdr), (char*)udp, udp_len);
-        struct pesudo_udphdr * pudph = (struct pesudo_udphdr *)check_buf;
-
-        pudph->saddr = ip->saddr ; 
-        pudph->daddr = ip->daddr; 
-        pudph->unused=0; 
-        pudph->protocol=IPPROTO_UDP; 
-        pudph->udplen=htons(udp_len);
-
-        udp->check = in_cksum((unsigned short *)check_buf, 
-                udp_len +  sizeof(struct pesudo_udphdr) );
-    }
-
-    // change Ethnet header
-    {
-        unsigned char mac_temp[ETH_ALEN]={0};
-        struct ethhdr *eh = (struct ethhdr *)buff;
-
-        memcpy(mac_temp,eh->h_dest,ETH_ALEN);
-        memcpy(eh->h_dest, eh->h_source, ETH_ALEN);
-        memcpy(eh->h_source, mac_temp, ETH_ALEN);
-    }
-
-    return 0;
-}
-
-static int dns_packet_process(char *buff, int len)
-{
-    assert(buff != NULL);
-    assert(len > 42);
-
-    echo_dns_query(buff, len);
-    return 0;
-}
-
-static int process_rings(struct netmap_ring *rxring, 
-        struct netmap_ring *txring,
-        u_int limit)
-{
-    u_int j, k, m = 0;
-    u_int f = 0;
-
-    j = rxring->cur; /* RX */
-    k = txring->cur; /* TX */
-    if (rxring->avail < limit)
-        limit = rxring->avail;
-    if (txring->avail < limit)
-        limit = txring->avail;
-    while (m < limit) {
-        struct netmap_slot *rs = &rxring->slot[j];
-        struct netmap_slot *ts = &txring->slot[k];
-        char *rxbuf = NETMAP_BUF(rxring, rs->buf_idx);
-        uint32_t pkt;
-
-        if (0 != is_dns_query(rxbuf, rs->len)) {
-            //break; /* best effort! */
-            goto NEXT_L;
-        }else {
-            dns_packet_process(rxbuf, rxring->slot[j].len);
-        }
-
-        pkt = ts->buf_idx;
-        ts->buf_idx = rs->buf_idx;
-        rs->buf_idx = pkt;
-        ts->len = rs->len;
-
-        /* report the buffer change. */
-        ts->flags |= NS_BUF_CHANGED;
-        k = NETMAP_RING_NEXT(txring, k);
-        f ++;
-
-NEXT_L:
-        rs->flags |= NS_BUF_CHANGED;
-        j = NETMAP_RING_NEXT(rxring, j);
-        m++;
-    }
-    rxring->avail -= m;
-    txring->avail -= f;
-    rxring->cur = j;
-    txring->cur = k;
-
-    return (m);
-}
-
-/* move packts from src to destination */
-static int nm_debug_echo(struct my_ring *src)
-{
-    struct netmap_ring *txring, *rxring;
-    int limit = 1024;
-    u_int m = 0, si = src->begin, di = src->begin;
-
-    while (si < src->end && di < src->end) {
-        rxring = NETMAP_RXRING(src->nifp, si);
-        txring = NETMAP_TXRING(src->nifp, di);
-
-        if (rxring->avail == 0) {
-            si++;
-            continue;
-        }
-        if (txring->avail == 0) {
-            di++;
-            continue;
-        }
-        m += process_rings(rxring, txring, limit);
-        if (rxring->avail != 0 && txring->avail != 0)
-            si++;
-    }
-
-    return (m);
-}
-#endif // NM_DBG_RECV_ECHO

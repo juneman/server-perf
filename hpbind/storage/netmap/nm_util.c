@@ -1,11 +1,16 @@
+/**
+ * File: nm_util.c
+ *
+ * author: db
+ *
+ */
 #include <assert.h>
 #include "nm_util.h"
 
 static int verbose = 0;
 static pthread_mutex_t g_lock_lock = PTHREAD_MUTEX_INITIALIZER;
 
-    int
-nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
+int nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
 {
     struct ifreq ifr;
     int error;
@@ -56,8 +61,7 @@ done:
  * Returns the file descriptor.
  * The extra flag checks configures promisc mode.
  */
-    int
-netmap_open(struct my_ring *me, int ringid, int promisc)
+int netmap_open(struct my_ring *me, int ringid, int promisc)
 {
     int fd, err, l;
     struct nmreq req;
@@ -106,18 +110,6 @@ netmap_open(struct my_ring *me, int ringid, int promisc)
             me[0].if_flags |= IFF_PPROMISC;
             nm_do_ioctl(me, SIOCSIFFLAGS, 0);
         }
-
-        /* disable:
-         * - generic-segmentation-offload
-         * - tcp-segmentation-offload
-         * - rx-checksumming
-         * - tx-checksumming
-         * XXX check how to set back the caps.
-         */
-        //	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SGSO);
-        //	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STSO);
-        //	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_SRXCSUM);
-        //	nm_do_ioctl(me, SIOCETHTOOL, ETHTOOL_STXCSUM);
     }
 
     me->nifp = NETMAP_IF(me->mem, req.nr_offset);
@@ -146,8 +138,7 @@ error:
 }
 
 
-    int
-netmap_close(struct my_ring *me)
+int netmap_close(struct my_ring *me)
 {
     D("");
     if (me->mem)
@@ -156,37 +147,8 @@ netmap_close(struct my_ring *me)
     return (0);
 }
 
-
-/*
- * how many packets on this set of queues ?
- */
-    int
-pkt_queued(struct my_ring *me, int tx)
-{
-    u_int i, tot = 0;
-
-    ND("me %p begin %d end %d", me, me->begin, me->end);
-    for (i = me->begin; i < me->end; i++) {
-        struct netmap_ring *ring = tx ?
-            NETMAP_TXRING(me->nifp, i) : NETMAP_RXRING(me->nifp, i);
-        tot += ring->avail;
-    }
-    if (0 && verbose && tot && !tx)
-        D("ring %s %s %s has %d avail at %d",
-                me->ifname, tx ? "tx": "rx",
-                me->end >= me->nifp->ni_tx_rings ? // XXX who comes first ?
-                "host":"net",
-                tot, NETMAP_TXRING(me->nifp, me->begin)->cur);
-    return tot;
-}
-
 //------------------------------------------//
 ///////
-///
-/*
-
-
-*/ 
 typedef struct _netmap_storage_s_ {
     struct my_ring ring;
     char ifname[32];
@@ -218,40 +180,6 @@ static netmap_storage_s * netmap_free_node()
     return &g_storage[g_fds_index];
 }
 
-static int netmap_init_lock(struct my_ring *ring)
-{
-#ifdef NM_HAVE_MRING_LOCK
-    pthread_mutex_init(&ring->rxlock, NULL);
-    pthread_mutex_init(&ring->txlock, NULL);
-#elif defined(NM_HAVE_RING_LOCK)
-    struct netmap_ring * txring = NULL, *rxring = NULL;
-    unsigned int ni = ring->begin;
-    while (ni < ring->end)
-    {
-        txring = NETMAP_TXRING(ring->nifp, ni);
-        if (txring->lock == NULL)
-        {
-            txring->lock = malloc(sizeof(pthread_mutex_t));
-            if (txring->lock != NULL)
-                pthread_mutex_init((pthread_mutex_t *) txring->lock, NULL);
-        }
-
-        rxring = NETMAP_RXRING(ring->nifp, ni);
-        if (rxring->lock == NULL)
-        {
-            rxring->lock = malloc(sizeof(pthread_mutex_t));
-            if (rxring->lock != NULL)
-                pthread_mutex_init((pthread_mutex_t *) rxring->lock, NULL);
-        }
-
-        ni ++;
-    }
-
-#endif
-
-    return 0;
-}
-
 int netmap_getfd(const char *ifname)
 {
     int fd = -1;
@@ -270,7 +198,6 @@ int netmap_getfd(const char *ifname)
     sto->ring.ifname = sto->ifname;
 
     netmap_open(&sto->ring, 0, 0);
-    netmap_init_lock(&sto->ring);
 
     sto->fd = sto->ring.fd;
     fd = sto->fd;
@@ -302,10 +229,6 @@ struct my_ring* netmap_getring(int fd)
     int index = 0;
     netmap_storage_s *sto;
 
-#ifdef NM_DBG_SEND_ECHO
-    sto = &g_storage[0];
-    return &sto->ring;
-#else
     for (index = 0; index < NM_MAX_FDS; index ++ ) 
     {
         sto = &g_storage[index];
@@ -313,7 +236,6 @@ struct my_ring* netmap_getring(int fd)
             return &sto->ring;
     }
     return NULL;
-#endif
 }
 
 // lock impl

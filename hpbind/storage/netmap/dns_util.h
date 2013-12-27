@@ -1,31 +1,11 @@
+/**
+ * File: dns_util.h
+ *
+ * author: db
+ */
+
 #ifndef __DNS_ECHO_H
 #define __DNS_ECHO_H
-
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-
-#include <sys/mman.h> /* PROT_* */
-#include <sys/ioctl.h> /* ioctl */
-#include <sys/param.h>
-#include <sys/poll.h>
-#include <sys/socket.h> /* sockaddr.. */
-#include <arpa/inet.h> /* ntohs */
-
-#include <sys/epoll.h>
-
-#include <net/if.h>	/* ifreq */
-#include <net/ethernet.h>
-
-#include <netinet/if_ether.h>
-#include <netinet/in.h> /* sockaddr_in */
-#include <netinet/ip.h>
-#include <netinet/udp.h>
-
-#include "net/netmap.h"
-#include "net/netmap_user.h"
 
 #include "nm_util.h"
 #include "build.h"
