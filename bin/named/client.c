@@ -55,6 +55,11 @@
 #include <named/server.h>
 #include <named/update.h>
 
+// added-by-db
+#ifdef IO_USE_NETMAP 
+#include "bind9_nm_io.h"
+#endif
+
 /***
  *** Client
  ***/
@@ -717,8 +722,15 @@ ns_client_next(ns_client_t *client, isc_result_t result) {
 	(void)exit_check(client);
 }
 
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO)
+void
+client_senddone(isc_task_t *task, isc_event_t *event) {
+#else
 static void
 client_senddone(isc_task_t *task, isc_event_t *event) {
+#endif
+
+
 	ns_client_t *client;
 	isc_socketevent_t *sevent = (isc_socketevent_t *) event;
 
@@ -1922,6 +1934,44 @@ client_request(isc_task_t *task, isc_event_t *event) {
 	switch (client->message->opcode) {
 	case dns_opcode_query:
 		CTRACE("query");
+
+// added-by-db
+#ifdef IO_USE_NETMAP
+#ifdef NM_DBG_SEND_ECHO
+        {     
+            io_msg_s iomsg;
+            isc_buffer_t buff;
+            isc_buffer_init(&buff, sevent->region.base, sevent->n);
+            isc_buffer_add(&buff, sevent->n);
+
+            iomsg.buff = isc_buffer_current(&buff);
+            iomsg.buff_len = isc_buffer_usedlength(&buff);  //sevent->n;     
+
+            iomsg.remote_addr = client->peeraddr.type.sin.sin_addr.s_addr;
+            iomsg.remote_port  = client->peeraddr.type.sin.sin_port;
+
+            iomsg.local_addr = sevent->location.local_addr; 
+            iomsg.local_port = sevent->location.local_port;
+
+            memcpy(iomsg.local_macaddr, sevent->location.local_macaddr, 6);
+            memcpy(iomsg.remote_macaddr, sevent->location.remote_macaddr, 6);
+
+#if (NM_DBG_SEND_ECHO_STEP <= 1)
+            client->nsends++;
+            ((isc_socketevent_t *) client->sendevent)->result = ISC_R_SUCCESS;
+
+            netmap_send(0, &iomsg);
+            client_senddone(client->task,
+                    (isc_event_t *)client->sendevent);
+            return;
+#else
+            ns_netmap_query_start(client, &iomsg);
+            return;
+#endif            
+        } 
+#endif
+#endif
+
 		ns_query_start(client);
 		break;
 	case dns_opcode_update:

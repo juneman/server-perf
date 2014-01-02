@@ -36,6 +36,7 @@
 
 // added-by-db
 #ifdef IO_USE_NETMAP
+#include "nm_util.h"
 #include "bind9_nm_io.h"
 #endif
 
