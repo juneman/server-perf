@@ -1869,6 +1869,11 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	 * Full reads are posted, or partials if partials are ok.
 	 */
 	dev->result = ISC_R_SUCCESS;
+    
+#ifdef NM_DBG_RECV_ECHO
+    return (DOIO_SOFT);
+#endif
+
 	return (DOIO_SUCCESS);
 }
 #endif

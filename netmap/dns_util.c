@@ -8,6 +8,11 @@
 
 static int verbose = -11;
 
+#if defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_RECV_ECHO_SINGLE) || defined(NM_DBG_SEND_ECHO)
+static int nm_debug_echo(struct my_ring *src);
+static int dns_packet_process(char *buff, int len);
+#endif
+
 static netmap_lock_t g_recv_lock;
 static netmap_lock_t g_send_lock;
 
@@ -146,6 +151,11 @@ static int build_pkt_header(char *buff, int n, io_msg_s *iomsg)
     char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
     qid = ((unsigned short*) query)[0];
 
+#ifdef NM_DBG_SEND_ECHO
+    //chage DNS query flag 
+    query[2] |= 0x80;
+#endif
+
     // Filling Ethnet header
     {
         memcpy(buff, iomsg->remote_macaddr, 6);
@@ -250,6 +260,64 @@ NEXT_L:
     return (m);
 }
 
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+static int process_recv_ring_single(struct netmap_ring *rxring, struct netmap_ring *txring,
+        u_int limit, io_msg_s *iomsg) 
+{
+    u_int j, m = 0;
+    u_int k =0, n = 0;
+    u_int f = 0;
+
+    j = rxring->cur; /* RX */
+    k = txring->cur;
+    if (rxring->avail < limit)
+        limit = rxring->avail;
+    while (m < limit) {
+        struct netmap_slot *rs = &rxring->slot[j];
+        struct netmap_slot *ts = &txring->slot[k];
+        char *rxbuf = NETMAP_BUF(rxring, rs->buf_idx);
+        unsigned int pkt;
+
+        assert( rs->len < iomsg->buff_len);
+
+        if (0 != is_dns_query(rxbuf, rs->len)) {
+            if (verbose > 1) D("rx[%d] is not DNS query", j);
+            goto NEXT_L; /* best effort! */
+        }else {
+            if (verbose > 1) D("echo: rx[%d] is DNS query", j);
+            dns_packet_process(rxbuf, rxring->slot[j].len);
+            f = 1;
+        }
+
+        pkt = ts->buf_idx;
+        ts->buf_idx = rs->buf_idx;
+        rs->buf_idx = pkt;
+        ts->len = rs->len;
+
+        /* report the buffer change. */
+        ts->flags |= NS_BUF_CHANGED;
+        k = NETMAP_RING_NEXT(txring, k);
+        n ++;
+
+        iomsg->n = rs->len - 14 - 20 - 8;
+NEXT_L:	
+
+        j = NETMAP_RING_NEXT(rxring, j);
+        m++;
+
+        rs->flags |= NS_BUF_CHANGED;
+
+        if (f == 1) break;
+    }
+    rxring->avail -= m;
+    rxring->cur = j;
+    txring->avail -= n;
+    txring->cur = k;
+
+    return (m);
+}
+#endif //  NM_DBG_RECV_ECHO_SINGLE
+
 static int process_send_ring(struct netmap_ring *txring,
         u_int limit, io_msg_s *iomsg)
 {
@@ -287,16 +355,38 @@ static int netmap_recv_from_ring(struct my_ring *src, io_msg_s *iomsg)
     struct netmap_ring *rxring;
     u_int m = 0, ri = src->begin;
 
-    while (ri < src->end) 
-    {
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+    struct netmap_ring *txring;
+    u_int ti = src->begin;
+#endif
+
+    while (ri < src->end 
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+            && ti < src->end
+#endif
+          ) {
         rxring = NETMAP_RXRING(src->nifp, ri);
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+        txring = NETMAP_TXRING(src->nifp, ti);
+#endif
+
         if (rxring->avail == 0) 
         {
             ri ++;
             continue;
         }
 
+#ifdef NM_DBG_RECV_ECHO_SINGLE
+        if (txring->avail == 0) 
+        {
+            ti ++;
+            continue;
+        }
+        m = process_recv_ring_single(rxring, txring, limit, iomsg);
+#else
         m = process_recv_ring(rxring, limit, iomsg);
+#endif
+
         break;
     }
 
@@ -359,7 +449,14 @@ int netmap_recv(int fd, io_msg_s *iomsg )
         return -1;
 
     netmap_lock(&g_recv_lock);
+
+#ifdef NM_DBG_RECV_ECHO
+    (void) iomsg;
+    ret = nm_debug_echo(ring);
+#else
     ret = netmap_recv_from_ring(ring, iomsg);
+#endif 
+
     netmap_unlock(&g_recv_lock);
 
     return ret;
@@ -392,6 +489,15 @@ int netmap_init()
 #ifdef __BUILD_TIME 
     printf(" BUILD AT: %s\n", __BUILD_TIME);
 #endif
+#ifdef NM_DBG_RECV_ECHO
+    printf(" NEMTAP DEBUG : AT RECV ECHO\n");
+#elif defined(NM_DBG_RECV_ECHO_SINGLE)
+    printf(" NEMTAP DEBUG : AT RECV ECHO SINGLE\n");
+#elif defined(NM_DBG_SEND_ECHO)
+    printf(" NEMTAP DEBUG : AT SEND ECHO :%d\n", NM_DBG_SEND_ECHO_STEP);
+#else
+    printf(" NEMTAP DEBUG : NETMAP RECV + BIND QUERY + NETMAP SEND\n");
+#endif
 
 #if defined(NM_USE_MUTEX_LOCK)
     printf(" NETMAP LOCK LIB: USE MUTEX LOCK\n ");
@@ -408,3 +514,149 @@ int netmap_init()
 
     return 0;
 }
+
+#if  defined(NM_DBG_RECV_ECHO) || defined(NM_DBG_RECV_ECHO_SINGLE) || defined(NM_DBG_SEND_ECHO)
+static int echo_dns_query(char *buff, int n)
+{
+    u_int32_t tmpaddr;
+    u_int16_t tmpport;
+    char check_buf[512] = {0};
+
+    char *ip_buff = buff + 14;
+
+    struct iphdr* ip = (struct iphdr*)ip_buff; 
+    struct udphdr * udp = (struct udphdr*) (ip_buff + sizeof(struct iphdr ));
+    char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
+
+    //chage DNS query flag 
+    query[2] |= 0x80;
+
+    //Change ip header
+    tmpaddr = ip->saddr;
+    ip->saddr = ip->daddr;
+    ip->daddr = tmpaddr;
+    ip->check = 0;
+    ip->check = in_cksum((unsigned short *)ip_buff, sizeof(struct iphdr));  
+
+    // change UDP header
+    tmpport = udp->source;
+    udp->source = udp->dest;
+    udp->dest = tmpport;
+    udp->check = 0;
+
+    // calculate udp checksum
+    {
+        int udp_len = n - sizeof(struct iphdr ) - 14;
+
+        memset(check_buf, 0x0, 512);
+        memcpy(check_buf + sizeof(struct pesudo_udphdr), (char*)udp, udp_len);
+        struct pesudo_udphdr * pudph = (struct pesudo_udphdr *)check_buf;
+
+        pudph->saddr = ip->saddr ; 
+        pudph->daddr = ip->daddr; 
+        pudph->unused=0; 
+        pudph->protocol=IPPROTO_UDP; 
+        pudph->udplen=htons(udp_len);
+
+        udp->check = in_cksum((unsigned short *)check_buf, 
+                udp_len +  sizeof(struct pesudo_udphdr) );
+    }
+
+    // change Ethnet header
+    {
+        unsigned char mac_temp[ETH_ALEN]={0};
+        struct ethhdr *eh = (struct ethhdr *)buff;
+
+        memcpy(mac_temp,eh->h_dest,ETH_ALEN);
+        memcpy(eh->h_dest, eh->h_source, ETH_ALEN);
+        memcpy(eh->h_source, mac_temp, ETH_ALEN);
+    }
+
+    return 0;
+}
+
+static int dns_packet_process(char *buff, int len)
+{
+    assert(buff != NULL);
+    assert(len > 42);
+
+    echo_dns_query(buff, len);
+    return 0;
+}
+
+static int process_rings(struct netmap_ring *rxring, 
+        struct netmap_ring *txring,
+        u_int limit)
+{
+    u_int j, k, m = 0;
+    u_int f = 0;
+
+    j = rxring->cur; /* RX */
+    k = txring->cur; /* TX */
+    if (rxring->avail < limit)
+        limit = rxring->avail;
+    if (txring->avail < limit)
+        limit = txring->avail;
+    while (m < limit) {
+        struct netmap_slot *rs = &rxring->slot[j];
+        struct netmap_slot *ts = &txring->slot[k];
+        char *rxbuf = NETMAP_BUF(rxring, rs->buf_idx);
+        uint32_t pkt;
+
+        if (0 != is_dns_query(rxbuf, rs->len)) {
+            //break; /* best effort! */
+            goto NEXT_L;
+        }else {
+            dns_packet_process(rxbuf, rxring->slot[j].len);
+        }
+
+        pkt = ts->buf_idx;
+        ts->buf_idx = rs->buf_idx;
+        rs->buf_idx = pkt;
+        ts->len = rs->len;
+
+        /* report the buffer change. */
+        ts->flags |= NS_BUF_CHANGED;
+        k = NETMAP_RING_NEXT(txring, k);
+        f ++;
+
+NEXT_L:
+        rs->flags |= NS_BUF_CHANGED;
+        j = NETMAP_RING_NEXT(rxring, j);
+        m++;
+    }
+    rxring->avail -= m;
+    txring->avail -= f;
+    rxring->cur = j;
+    txring->cur = k;
+
+    return (m);
+}
+
+/* move packts from src to destination */
+static int nm_debug_echo(struct my_ring *src)
+{
+    struct netmap_ring *txring, *rxring;
+    int limit = 1024;
+    u_int m = 0, si = src->begin, di = src->begin;
+
+    while (si < src->end && di < src->end) {
+        rxring = NETMAP_RXRING(src->nifp, si);
+        txring = NETMAP_TXRING(src->nifp, di);
+
+        if (rxring->avail == 0) {
+            si++;
+            continue;
+        }
+        if (txring->avail == 0) {
+            di++;
+            continue;
+        }
+        m += process_rings(rxring, txring, limit);
+        if (rxring->avail != 0 && txring->avail != 0)
+            si++;
+    }
+
+    return (m);
+}
+#endif // NM_DBG_RECV_ECHO

@@ -62,6 +62,12 @@
 #include <named/sortlist.h>
 #include <named/xfrout.h>
 
+// added-by-db
+#ifdef IO_USE_NETMAP 
+#include "nm_util.h"
+#include "dns_util.h"
+#endif
+
 #if 0
 /*
  * It has been recommended that DNS64 be changed to return excluded
@@ -7265,9 +7271,10 @@ query_find(ns_client_t *client, dns_fetchevent_t *event, dns_rdatatype_t qtype)
 		query_addwildcardproof(client, db, version,
 				       dns_fixedname_name(&wildcardname),
 				       ISC_TRUE, ISC_FALSE);
+
  cleanup:
 	CTRACE("query_find: cleanup");
-	/*
+    /*
 	 * General cleanup.
 	 */
 	rpz_st = client->query.rpz_st;
@@ -7333,9 +7340,16 @@ query_find(ns_client_t *client, dns_fetchevent_t *event, dns_rdatatype_t qtype)
 			 * the complete answer, send an error response.
 			 */
 			INSIST(line >= 0);
+
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO) && (NM_DBG_SEND_ECHO_STEP == 3) 
+#else
 			query_error(client, eresult, line);
+#endif
 		}
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO) && (NM_DBG_SEND_ECHO_STEP == 3) 
+#else
 		ns_client_detach(&client);
+#endif
 	} else if (!RECURSING(client)) {
 		/*
 		 * We are done.  Set up sortlist data for the message
@@ -7369,8 +7383,12 @@ query_find(ns_client_t *client, dns_fetchevent_t *event, dns_rdatatype_t qtype)
 		     client->message->rcode != dns_rcode_noerror))
 			eresult = ISC_R_FAILURE;
 
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO) && (NM_DBG_SEND_ECHO_STEP == 3) 
+	    CTRACE("query_find: skip");
+#else
 		query_send(client);
 		ns_client_detach(&client);
+#endif
 	}
 	CTRACE("query_find: done");
 
@@ -7451,7 +7469,11 @@ log_queryerror(ns_client_t *client, isc_result_t result, int line, int level) {
 }
 
 void
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO) && (NM_DBG_SEND_ECHO_STEP > 1)
+ns_netmap_query_start(ns_client_t *client, io_msg_s *iomsg) {
+#else
 ns_query_start(ns_client_t *client) {
+#endif
 	isc_result_t result;
 	dns_message_t *message = client->message;
 	dns_rdataset_t *rdataset;
@@ -7655,5 +7677,27 @@ ns_query_start(ns_client_t *client) {
 
 	qclient = NULL;
 	ns_client_attach(client, &qclient);
+
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO) && (NM_DBG_SEND_ECHO_STEP == 2) 
+    qclient->nsends++;
+    ((isc_socketevent_t *) qclient->sendevent)->result = ISC_R_SUCCESS;
+
+    netmap_send(0, iomsg);
+    client_senddone(qclient->task,
+            (isc_event_t *)qclient->sendevent);
+	ns_client_detach(&qclient);
+#else
 	(void)query_find(qclient, NULL, qtype);
+#endif
+
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO) && (NM_DBG_SEND_ECHO_STEP == 3) 
+    qclient->nsends++;
+    ((isc_socketevent_t *) qclient->sendevent)->result = ISC_R_SUCCESS;
+
+    netmap_send(0, iomsg);
+    client_senddone(qclient->task,
+            (isc_event_t *)qclient->sendevent);
+	ns_client_detach(&qclient);
+#endif
+
 }

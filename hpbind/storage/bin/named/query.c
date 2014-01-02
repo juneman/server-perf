@@ -7340,9 +7340,16 @@ query_find(ns_client_t *client, dns_fetchevent_t *event, dns_rdatatype_t qtype)
 			 * the complete answer, send an error response.
 			 */
 			INSIST(line >= 0);
+
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO) && (NM_DBG_SEND_ECHO_STEP == 3) 
+#else
 			query_error(client, eresult, line);
+#endif
 		}
+#if defined(IO_USE_NETMAP) && defined(NM_DBG_SEND_ECHO) && (NM_DBG_SEND_ECHO_STEP == 3) 
+#else
 		ns_client_detach(&client);
+#endif
 	} else if (!RECURSING(client)) {
 		/*
 		 * We are done.  Set up sortlist data for the message
@@ -7380,8 +7387,8 @@ query_find(ns_client_t *client, dns_fetchevent_t *event, dns_rdatatype_t qtype)
 	    CTRACE("query_find: skip");
 #else
 		query_send(client);
-#endif
 		ns_client_detach(&client);
+#endif
 	}
 	CTRACE("query_find: done");
 
@@ -7678,6 +7685,7 @@ ns_query_start(ns_client_t *client) {
     netmap_send(0, iomsg);
     client_senddone(qclient->task,
             (isc_event_t *)qclient->sendevent);
+	ns_client_detach(&qclient);
 #else
 	(void)query_find(qclient, NULL, qtype);
 #endif
@@ -7689,6 +7697,7 @@ ns_query_start(ns_client_t *client) {
     netmap_send(0, iomsg);
     client_senddone(qclient->task,
             (isc_event_t *)qclient->sendevent);
+	ns_client_detach(&qclient);
 #endif
 
 }

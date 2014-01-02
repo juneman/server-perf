@@ -46,9 +46,17 @@
 #define D(format, ...)	do {} while(0)
 #endif
 
+//#define NM_DBG_RECV_ECHO
+//#define NM_DBG_RECV_ECHO_SINGLE
+#define NM_DBG_SEND_ECHO
+#define NM_DBG_SEND_ECHO_STEP 3
+
 // lock lib
 #define NM_USE_MUTEX_LOCK
 //#define NM_USE_SPIN_LOCK
+
+// lock scope
+#define NM_HAVE_G_LOCK 
 
 /*
  * info on a ring we handle

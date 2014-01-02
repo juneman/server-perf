@@ -1,4 +1,4 @@
-all: bldenv  nm_util.o dns_util.o
+all: clean bldenv  nm_util.o dns_util.o
 
 nm_util.o: nm_util.h
 dns_util.o: dns_util.h
