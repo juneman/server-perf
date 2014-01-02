@@ -7,6 +7,8 @@
 #ifndef __DNS_ECHO_H
 #define __DNS_ECHO_H
 
+#include "config.h"
+
 struct pesudo_udphdr { 
     unsigned int saddr, daddr; 
     unsigned char unused; 

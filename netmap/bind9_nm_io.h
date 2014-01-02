@@ -7,6 +7,8 @@
 #ifndef __BIND9_NM_IO_H
 #define __BIND9_NM_IO_H
 
+#include "config.h"
+
 typedef struct _io_msg_s_ {
     char *buff;  // read/write buffer
     int buff_len; // length of buff
