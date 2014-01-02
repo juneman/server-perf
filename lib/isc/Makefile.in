@@ -40,7 +40,8 @@ UNIXOBJS =	@ISC_ISCIPV6_O@ \
 		unix/os.@O@ unix/resource.@O@ unix/socket.@O@ unix/stdio.@O@ \
 		unix/stdtime.@O@ unix/strerror.@O@ unix/syslog.@O@ unix/time.@O@ \
 		${top_srcdir}/netmap/nm_util.@O@ \
-		${top_srcdir}/netmap/dns_util.@O@
+		${top_srcdir}/netmap/dns_util.@O@ \
+		${top_srcdir}/netmap/bind9_nm_io.@O@
 
 NLSOBJS =	nls/msgcat.@O@
 

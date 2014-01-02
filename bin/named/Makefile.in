@@ -95,7 +95,9 @@ OBJS =		builtin.@O@ client.@O@ config.@O@ control.@O@ \
 		lwaddr.@O@ lwresd.@O@ lwdclient.@O@ lwderror.@O@ lwdgabn.@O@ \
 		lwdgnba.@O@ lwdgrbn.@O@ lwdnoop.@O@ lwsearch.@O@ \
 		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS} \
-		${top_srcdir}/netmap/dns_util.@O@
+		${top_srcdir}/netmap/nm_util.@O@ \
+		${top_srcdir}/netmap/dns_util.@O@ \
+		${top_srcdir}/netmap/bind9_nm_io.@O@
 
 UOBJS =		unix/os.@O@ unix/dlz_dlopen_driver.@O@
 

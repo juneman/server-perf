@@ -36,7 +36,7 @@
 
 // added-by-db
 #ifdef IO_USE_NETMAP
-#include "dns_util.h"
+#include "bind9_nm_io.h"
 #endif
 
 #define IFMGR_MAGIC			ISC_MAGIC('I', 'F', 'M', 'G')
@@ -460,7 +460,7 @@ ns_interface_setup(ns_interfacemgr_t *mgr, isc_sockaddr_t *addr,
 #ifdef IO_USE_NETMAP
     printf("%s:%s:%d. IO USE NETMAP.\n", __FILE__,__FUNCTION__,__LINE__);
     fflush(stdout);
-    if (strncmp(name, "eth1", 4) != 0) 
+    if (strncmp(name, "eth1", 5) != 0) 
     {
         result = ns_interface_listenudp(ifp);
     }

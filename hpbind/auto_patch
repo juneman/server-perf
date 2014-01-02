@@ -5,35 +5,8 @@
 ##
 
 BIND9_DEV_DIR=/home/db/bind-9.9.3-P2-dubin
-BIND9_BACKUP_DIR=./bind9_origin
 SOURCE_DIR=./storage
 #############################
-
-
-######
-##  backup origin bind9 code
-echo ""
-echo ""
-echo "backup origin code ...."
-rm -rf ${BIND9_BACKUP_DIR}
-mkdir -p ${BIND9_BACKUP_DIR}
-
-mkdir -p ${BIND9_BACKUP_DIR}/bin/named/include/named/
-mkdir -p ${BIND9_BACKUP_DIR}/lib/dns/include/dns/
-mkdir -p ${BIND9_BACKUP_DIR}/lib/isc/include/isc/
-mkdir -p ${BIND9_BACKUP_DIR}/lib/isc/unix/
-mkdir -p ${BIND9_BACKUP_DIR}/netmap/
-
-cp -v ${BIND9_DEV_DIR}/bin/named/{query.c,client.c,interfacemgr.c,Makefile.in} ${BIND9_BACKUP_DIR}/bin/named/
-cp -v ${BIND9_DEV_DIR}/bin/named/include/named/query.h ${BIND9_BACKUP_DIR}/bin/named/include/named/
-cp -v ${BIND9_DEV_DIR}/lib/dns/include/dns/dispatch.h ${BIND9_BACKUP_DIR}/lib/dns/include/dns/
-cp -v ${BIND9_DEV_DIR}/lib/dns/dispatch.c ${BIND9_BACKUP_DIR}/lib/dns/
-cp -v ${BIND9_DEV_DIR}/lib/isc/include/isc/{bind9.h,namespace.h,socket.h} ${BIND9_BACKUP_DIR}/lib/isc/include/isc/
-cp -v ${BIND9_DEV_DIR}/lib/isc/unix/{Makefile.in,socket.c} ${BIND9_BACKUP_DIR}/lib/isc/unix/
-cp -v ${BIND9_DEV_DIR}/lib/isc/{Makefile.in,socket_api.c} ${BIND9_BACKUP_DIR}/lib/isc/
-cp -vfr ${BIND9_DEV_DIR}/netmap/* ${BIND9_BACKUP_DIR}/netmap/ 
-cp -v ${BIND9_DEV_DIR}/Makefile.in ${BIND9_BACKUP_DIR}
-echo " backup done."
 
 #########
 # pacth 

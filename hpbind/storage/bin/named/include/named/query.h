@@ -96,8 +96,7 @@ ns_query_free(ns_client_t *client);
 
 #ifdef IO_USE_NETMAP
 
-#include "nm_util.h"
-#include "dns_util.h"
+#include "bind9_nm_io.h"
 
 #ifdef NM_DBG_SEND_ECHO
 #if (NM_DBG_SEND_ECHO_STEP > 2)
