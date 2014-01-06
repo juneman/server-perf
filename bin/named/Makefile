@@ -144,7 +144,7 @@ OBJS =		builtin.o client.o config.o control.o \
 		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS} \
 		${top_srcdir}/netmap/nm_util.o \
 		${top_srcdir}/netmap/dns_util.o \
-		${top_srcdir}/netmap/bind9_nm_io.o
+		${top_srcdir}/netmap/iobase.o
 
 UOBJS =		unix/os.o unix/dlz_dlopen_driver.o
 

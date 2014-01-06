@@ -36,8 +36,7 @@
 
 // added-by-db
 #ifdef IO_USE_NETMAP
-#include "nm_util.h"
-#include "bind9_nm_io.h"
+#include "iobase.h"
 #endif
 
 #define IFMGR_MAGIC			ISC_MAGIC('I', 'F', 'M', 'G')
@@ -805,7 +804,7 @@ do_scan(ns_interfacemgr_t *mgr, ns_listenlist_t *ext_listen,
 
 // added-by-db
 #ifdef IO_USE_NETMAP
-    netmap_init();
+    netmap_init(NULL);
 #endif
 
 	for (result = isc_interfaceiter_first(iter);

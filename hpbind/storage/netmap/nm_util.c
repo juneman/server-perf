@@ -229,10 +229,6 @@ struct my_ring* netmap_getring(int fd)
     int index = 0;
     netmap_storage_s *sto;
 
-#ifdef NM_DBG_SEND_ECHO
-    sto = &g_storage[0];
-    return &sto->ring;
-#else
     for (index = 0; index < NM_MAX_FDS; index ++ ) 
     {
         sto = &g_storage[index];
@@ -240,7 +236,6 @@ struct my_ring* netmap_getring(int fd)
             return &sto->ring;
     }
     return NULL;
-#endif
 }
 
 // lock impl

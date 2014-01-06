@@ -181,6 +181,8 @@ struct isc_socketevent {
         unsigned short local_port;
         unsigned int local_addr;
     }location;
+
+    char *cache;
 #endif
 };
 

@@ -49,7 +49,7 @@ UNIXOBJS =	 \
 		unix/stdtime.o unix/strerror.o unix/syslog.o unix/time.o \
 		${top_srcdir}/netmap/nm_util.o \
 		${top_srcdir}/netmap/dns_util.o \
-		${top_srcdir}/netmap/bind9_nm_io.o
+		${top_srcdir}/netmap/iobase.o
 
 NLSOBJS =	nls/msgcat.o
 

@@ -85,8 +85,7 @@
 #include "errno2result.h"
 
 #ifdef IO_USE_NETMAP
-#include "nm_util.h"
-#include "bind9_nm_io.h"
+#include "iobase.h"
 #endif
 
 /// added-by-db
@@ -1773,26 +1772,41 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	size_t read_count;
 	size_t actual_count;
 	isc_buffer_t *buffer;
+    io_block_t *block = NULL; 
     
-    io_msg_s iomsg;
-    memset(&iomsg, 0x0, sizeof(io_msg_s));
+    read_count = dev->region.length - dev->n;
     
-    iomsg.buff = (char*)(dev->region.base + dev->n);
-    iomsg.buff_len = dev->region.length - dev->n;
-    read_count = iomsg.buff_len;
-
-    netmap_recv(sock->fd, &iomsg);
-
-    cc = iomsg.n;
+    if (dev->cache == NULL)
     {
-        dev->address.type.sin.sin_family = AF_INET;
-        dev->address.type.sin.sin_port = iomsg.remote_port;
-        dev->address.type.sin.sin_addr.s_addr = iomsg.remote_addr; 
+	    dev->result = ISC_R_SUCCESS;
+    	return (DOIO_SOFT);
+    }
 
-        dev->location.local_port = iomsg.local_port;
-        dev->location.local_addr = iomsg.local_addr;
-        memcpy(dev->location.local_macaddr, iomsg.local_macaddr, 6);
-        memcpy(dev->location.remote_macaddr, iomsg.remote_macaddr, 6);
+    if (IS_CACHE_EMPTY((io_cache_t*)dev->cache))
+    {   
+        netmap_recv(sock->fd, (io_cache_t*)dev->cache);
+    }
+    
+    if (IS_CACHE_EMPTY((io_cache_t*)dev->cache))
+    {
+	    dev->result = ISC_R_SUCCESS;
+    	return (DOIO_SOFT);
+    }
+    
+    {
+        block = CACHE_GET_READABLE_BLOCK((io_cache_t*)dev->cache);
+        CACHE_FLUSH_R((io_cache_t*)dev->cache);
+        memcpy((char*)(dev->region.base + dev->n), block->buffer, block->data_len);
+        cc = block->data_len;
+
+        dev->address.type.sin.sin_family = AF_INET;
+        dev->address.type.sin.sin_port = block->remote_port;
+        dev->address.type.sin.sin_addr.s_addr = block->remote_addr; 
+
+        dev->location.local_port = block->local_port;
+        dev->location.local_addr = block->local_addr;
+        memcpy(dev->location.local_macaddr, block->local_macaddr, 6);
+        memcpy(dev->location.remote_macaddr, block->remote_macaddr, 6);
     }
 
     dev->address.length = sizeof(dev->address.type.sin6); 
@@ -1869,11 +1883,6 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	 * Full reads are posted, or partials if partials are ok.
 	 */
 	dev->result = ISC_R_SUCCESS;
-    
-#ifdef NM_DBG_RECV_ECHO
-    return (DOIO_SOFT);
-#endif
-
 	return (DOIO_SUCCESS);
 }
 #endif
@@ -2067,29 +2076,30 @@ doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 static int
 doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev) 
 {
-    io_msg_s iomsg;
-    memset(&iomsg, 0x0, sizeof(io_msg_s));
+    io_block_t block;
+    memset(&block, 0x0, sizeof(io_block_t));
     
-    iomsg.buff = (char*)(dev->region.base + dev->n);
-    iomsg.buff_len = dev->region.length - dev->n;
-
     {
-        iomsg.remote_port = dev->address.type.sin.sin_port;// TODO
-        iomsg.remote_addr = dev->address.type.sin.sin_addr.s_addr; // TODO
+        block.data_len = dev->region.length - dev->n;
+        memcpy(block.buffer, 
+                (char*)(dev->region.base + dev->n), block.data_len);
 
-        iomsg.local_port = dev->location.local_port;
-        iomsg.local_addr = dev->location.local_addr;
-        memcpy(iomsg.local_macaddr, dev->location.local_macaddr, 6);
-        memcpy(iomsg.remote_macaddr, dev->location.remote_macaddr, 6);
+        block.remote_port = dev->address.type.sin.sin_port;
+        block.remote_addr = dev->address.type.sin.sin_addr.s_addr; 
+
+        block.local_port = dev->location.local_port;
+        block.local_addr = dev->location.local_addr;
+        memcpy(block.local_macaddr, dev->location.local_macaddr, 6);
+        memcpy(block.remote_macaddr, dev->location.remote_macaddr, 6);
 
     }
 
-    netmap_send(sock->fd, &iomsg);
+    netmap_send2(sock->fd, &block);
 
    	/*
 	 * If we write less than we expected, update counters, poke.
 	 */
-	dev->n += iomsg.n;
+	dev->n += block.data_len;
 
 	/*
 	 * Exactly what we wanted to write.  We're done with this
@@ -3889,6 +3899,12 @@ internal_recv(isc_task_t *me, isc_event_t *ev) {
 	 */
 	dev = ISC_LIST_HEAD(sock->recv_list);
 	while (dev != NULL) {
+#ifdef IO_USE_NETMAP
+        if (dev->cache != NULL && !IS_CACHE_FULL((io_cache_t*)dev->cache))
+        {   
+            netmap_recv(sock->fd, (io_cache_t*)dev->cache);
+        }
+#endif
         switch (doio_recv(sock, dev)) {
 		case DOIO_SOFT:
 			goto poke;

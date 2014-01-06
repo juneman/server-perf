@@ -93,24 +93,8 @@ ns_query_init(ns_client_t *client);
 void
 ns_query_free(ns_client_t *client);
 
-
-#ifdef IO_USE_NETMAP
-
-#include "bind9_nm_io.h"
-
-#ifdef NM_DBG_SEND_ECHO
-#if (NM_DBG_SEND_ECHO_STEP > 2)
-void
-ns_netmap_query_start(ns_client_t *client, io_msg_s *iomsg);
-#else
 void
 ns_query_start(ns_client_t *client);
-#endif
-#endif
-#else
-void
-ns_query_start(ns_client_t *client);
-#endif
 
 void
 ns_query_cancel(ns_client_t *client);
