@@ -16,6 +16,89 @@ static int g_nm_inited = 0;
 
 static unsigned short g_ip_id_next = 0x12a;
 
+typedef struct __netmap_user_info_t__ {
+    struct my_ring ring;
+    char ifname[32];
+    int fd;
+}netmap_user_info_t;
+
+#define NM_MAX_FDS 32
+static netmap_user_info_t g_storage[NM_MAX_FDS];
+
+static pthread_mutex_t g_netmap_fd_lock = PTHREAD_MUTEX_INITIALIZER;
+static int g_fds_index = -1;
+
+static int netmap_init_userinfo() 
+{
+    memset(g_storage, 0x0, NM_MAX_FDS * sizeof(netmap_user_info_t));
+    return 0;
+}
+
+// must by locked by g_netmap_fd_lock by caller
+static netmap_user_info_t * netmap_alloc_node()
+{
+    g_fds_index ++;
+    if (g_fds_index >= NM_MAX_FDS)
+    {
+        return NULL;
+    }
+
+    return &g_storage[g_fds_index];
+}
+
+int netmap_getfd(const char *ifname)
+{
+    int fd = -1;
+    pthread_mutex_lock(&g_netmap_fd_lock);
+
+    netmap_user_info_t *info = netmap_alloc_node();
+    if (info == NULL) goto OUT_L; 
+
+    strncpy(info->ifname, ifname, 31);
+    info->ring.ifname = info->ifname;
+
+    netmap_open(&info->ring, 0, 0);
+
+    info->fd = info->ring.fd;
+    fd = info->fd;
+
+OUT_L:
+    pthread_mutex_unlock(&g_netmap_fd_lock);
+    return fd;
+}
+
+int netmap_closefd(int fd)
+{
+    int index = 0;
+    netmap_user_info_t *info;
+    for (index = 0; index < NM_MAX_FDS; index ++ ) 
+    {
+        info = &g_storage[index];
+        if (info->fd == fd)
+        {
+            netmap_close(&info->ring);
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+struct my_ring* netmap_getring(int fd)
+{
+    int index = 0;
+    netmap_user_info_t *info;
+
+    for (index = 0; index < NM_MAX_FDS; index ++ ) 
+    {
+        info = &g_storage[index];
+        if (info->fd == fd)
+            return &info->ring;
+    }
+    return NULL;
+}
+
+
 static int parse_addr(char *buff, int len, io_block_t * block)
 {
     struct iphdr *ip;
@@ -68,7 +151,8 @@ static int build_pkt_header(char *buff, int len, io_block_t * block)
 
     char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
     qid = ((unsigned short*) query)[0];
-
+    
+    query[2] |= 0x80;
     // Filling Ethnet header
     {
         memcpy(buff, block->remote_macaddr, 6);
@@ -141,9 +225,9 @@ static int build_pkt_header(char *buff, int len, io_block_t * block)
 static int process_recv_ring(struct netmap_ring *rxring, io_cache_t *cache) 
 {
     u_int j, m = 0;
-    u_int f = 0;
     io_block_t *block = NULL;
     u_int limit = IO_CACHE_BLOCKS_MAX; 
+    int actual_count = 0;
 
     j = rxring->cur; /* RX */
     if (rxring->avail < limit)
@@ -169,6 +253,7 @@ static int process_recv_ring(struct netmap_ring *rxring, io_cache_t *cache)
         memcpy(block->buffer, rxbuf + PROTO_LEN , rs->len - PROTO_LEN);
         block->data_len = rs->len - PROTO_LEN;
 
+        actual_count ++;
 NEXT_L:	
         j = NETMAP_RING_NEXT(rxring, j);
         m++;
@@ -184,7 +269,7 @@ NEXT_L:
     rxring->avail -= m;
     rxring->cur = j;
 
-    return (m);
+    return (actual_count);
 }
 
 static int process_send_ring(struct netmap_ring *txring, io_cache_t *cache)
@@ -305,7 +390,7 @@ int netmap_recv(int fd, io_cache_t *cache)
 
     ring = netmap_getring(fd);
     if (ring == NULL)
-        return -1;
+        return ret;
 
     netmap_lock(&g_recv_lock);
 
@@ -320,6 +405,30 @@ END_L:
     return ret;
 }
 
+int netmap_recv2(int fd, io_block_t *block) 
+{
+    int ret = 0;
+    struct my_ring *ring = NULL;
+
+    ring = netmap_getring(fd);
+    if (ring == NULL)
+        return ret;
+
+    netmap_lock(&g_recv_lock);
+    {
+        io_cache_t cache;
+        cache.writep = 0;
+        cache.readp = 0;
+        cache.capcity = 2;
+        cache.blocks = block;
+
+        ret = netmap_recv_from_ring(ring, &cache);
+    }
+    netmap_unlock(&g_recv_lock);
+
+    return ret;
+}
+
 int netmap_send(int fd, io_cache_t *cache)
 {
     int ret = 0;
@@ -327,7 +436,7 @@ int netmap_send(int fd, io_cache_t *cache)
 
     ring = netmap_getring(fd);
     if (ring == NULL)
-        return -1;
+        return ret;
 
     netmap_lock(&g_send_lock);
 
@@ -349,7 +458,7 @@ int netmap_send2(int fd, io_block_t *block)
 
     ring = netmap_getring(fd);
     if (ring == NULL)
-        return -1;
+        return ret;
 
     netmap_lock(&g_send_lock);
     {
@@ -385,6 +494,8 @@ int netmap_init(void *arg)
     assert(0);
 #endif
 
+    netmap_init_userinfo();
+
     netmap_lock_init(&g_recv_lock);
     netmap_lock_init(&g_send_lock);
 
@@ -392,3 +503,5 @@ int netmap_init(void *arg)
 
     return 0;
 }
+
+

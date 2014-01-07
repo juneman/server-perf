@@ -4,7 +4,6 @@
  * author: db
  *
  */
-#include <assert.h>
 #include "nm_util.h"
 
 static int verbose = 0;
@@ -137,7 +136,6 @@ error:
     return -1;
 }
 
-
 int netmap_close(struct my_ring *me)
 {
     D("");
@@ -149,95 +147,6 @@ int netmap_close(struct my_ring *me)
 
 //------------------------------------------//
 ///////
-typedef struct _netmap_storage_s_ {
-    struct my_ring ring;
-    char ifname[32];
-    int fd;
-}netmap_storage_s;
-
-#define NM_MAX_FDS 32
-static netmap_storage_s g_storage[NM_MAX_FDS];
-
-static int g_inited = 0;
-static int g_fds_index = -1;
-
-static int netmap_init_storage() 
-{
-    memset(g_storage, 0x0, NM_MAX_FDS * sizeof(netmap_storage_s));
-
-    return 0;
-}
-
-static netmap_storage_s * netmap_free_node()
-{
-    g_fds_index ++;
-    assert(g_fds_index < NM_MAX_FDS);
-    if (g_fds_index >= NM_MAX_FDS)
-    {
-        return NULL;
-    }
-
-    return &g_storage[g_fds_index];
-}
-
-int netmap_getfd(const char *ifname)
-{
-    int fd = -1;
-    pthread_mutex_lock(&g_lock_lock);
-
-    if (g_inited == 0)
-    {
-        g_inited = 1;
-        netmap_init_storage();
-    }
-
-    netmap_storage_s *sto = netmap_free_node();
-    if (sto == NULL) goto OUT_L; 
-
-    strncpy(sto->ifname, ifname, 31);
-    sto->ring.ifname = sto->ifname;
-
-    netmap_open(&sto->ring, 0, 0);
-
-    sto->fd = sto->ring.fd;
-    fd = sto->fd;
-
-OUT_L:
-    pthread_mutex_unlock(&g_lock_lock);
-    return fd;
-}
-
-int netmap_closefd(int fd)
-{
-    int index = 0;
-    netmap_storage_s *sto;
-    for (index = 0; index < NM_MAX_FDS; index ++ ) 
-    {
-        sto = &g_storage[index];
-        if (sto->fd == fd)
-        {
-            netmap_close(&sto->ring);
-            return 0;
-        }
-    }
-
-    return -1;
-}
-
-struct my_ring* netmap_getring(int fd)
-{
-    int index = 0;
-    netmap_storage_s *sto;
-
-    for (index = 0; index < NM_MAX_FDS; index ++ ) 
-    {
-        sto = &g_storage[index];
-        if (sto->fd == fd)
-            return &sto->ring;
-    }
-    return NULL;
-}
-
 // lock impl
 int netmap_lock_init(netmap_lock_t *lock)
 {

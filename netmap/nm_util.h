@@ -62,10 +62,6 @@ struct my_ring {
 	uint32_t if_curcap;
 };
 
-int netmap_getfd(const char *ifname);
-int netmap_closefd(int fd);
-struct my_ring *netmap_getring(int fd);
-
 // lock wraper
 typedef struct __netmap_lock_t__
 {
@@ -78,10 +74,9 @@ typedef struct __netmap_lock_t__
 
 int netmap_lock_init(netmap_lock_t *lock);
 int netmap_lock_destory(netmap_lock_t *lock);
-
 int netmap_lock(netmap_lock_t *lock);
 int netmap_trylock(netmap_lock_t *lock);
-
 int netmap_unlock(netmap_lock_t *lock);
+
 
 #endif /* _NM_UTIL_H */

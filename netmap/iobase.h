@@ -14,7 +14,7 @@
 
 #define PROTO_LEN (14 + 20 + 8)
 
-#define IO_BLOCK_BUFF_SIZE 1024 
+#define IO_BLOCK_BUFF_SIZE 512 
 typedef struct __io_block_t__ {
     unsigned char local_macaddr[6];
     unsigned char remote_macaddr[6];
@@ -56,11 +56,17 @@ typedef struct __io_cache_t__ {
 #define IS_CACHE_EMPTY(cache) \
     (((cache)->writep == (cache)->readp) ? 1 : 0)
 
-#define IS_CACHE_AVAIL(cache) (((IS_CACHE_FULL(cache) == 0)  && (IS_CACHE_EMPTY(cache) == 0) ) ? 1 : 0) 
-
+/// for netmap fd
 int netmap_init(void *arg);
+int netmap_getfd(const char *ifname);
+int netmap_closefd(int fd);
+
+// for base io
 int netmap_recv(int fd, io_cache_t *cache);
+int netmap_recv2(int fd, io_block_t *block);
 int netmap_send(int fd, io_cache_t *cache);
 int netmap_send2(int fd, io_block_t *block);
+
+//int netmap_flush(int fd, io_cache_t *cache);
 
 #endif // end of __IOBASE_H
