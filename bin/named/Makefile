@@ -143,6 +143,7 @@ OBJS =		builtin.o client.o config.o control.o \
 		lwdgnba.o lwdgrbn.o lwdnoop.o lwsearch.o \
 		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS} \
 		${top_srcdir}/netmap/nm_util.o \
+		${top_srcdir}/netmap/nm_lock.o \
 		${top_srcdir}/netmap/dns_util.o \
 		${top_srcdir}/netmap/iobase.o
 

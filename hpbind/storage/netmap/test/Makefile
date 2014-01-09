@@ -1,20 +1,31 @@
-# For multiple programs using a single source file each,
-# we can just define 'progs' and create custom targets.
-PROGS	=	echo
 
-CLEANFILES = $(PROGS) *.o
-CFLAGS = -g -O2 
+#
+# author: db
+#
+
+PROGS	=	echo echo_threads
+
+NM_LIB_PATH=../
+NM_LIB=nmio
+NM_INC=../iobase.h
+
+CLEANFILES=$(PROGS) *.o
+CFLAGS= -g -O2 
 CFLAGS += -Werror -Wall
 CFLAGS += -I ../ 
 
-LDFLAGS += -lpthread
+LDFLAGS += -L$(NM_LIB_PATH) -lpthread -l$(NM_LIB)
 
 all: prebuild clean $(PROGS)
 
-
-echo: echo.o ../nm_util.o ../dns_util.o ../iobase.o
+echo: echo.o 
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
-echo.o: ../nm_util.h ../dns_util.h ../iobase.h 
+
+echo_threads: echo_threads.o 
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+echo.o: $(NM_INC) 
+echo_threads.o: $(NM_INC)
 
 prebuild:
 	make -C ../

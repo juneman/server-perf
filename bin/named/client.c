@@ -2083,26 +2083,6 @@ client_create(ns_clientmgr_t *manager, ns_client_t **clientp) {
 		goto cleanup_message;
 	}
 
-#ifdef IO_USE_NETMAP
-    client->sendevent->cache = (char*)isc_mem_get(client->mctx, sizeof(io_cache_t));
-    if (client->sendevent->cache != NULL)
-    {
-        ( (io_cache_t *)client->sendevent->cache)->blocks =
-            (char*)isc_mem_get(client->mctx, sizeof(io_block_t) * IO_CACHE_BLOCKS_MAX - 1);
-        if (((io_cache_t *)client->sendevent->cache)->blocks != NULL)
-        {
-            ((io_cache_t *)client->sendevent->cache)->writep = 0;
-            ((io_cache_t *)client->sendevent->cache)->readp = 0;
-            ((io_cache_t *)client->sendevent->cache)->capcity = IO_CACHE_BLOCKS_MAX - 1;
-        }
-        else
-        {
-            isc_mem_put(client->mctx, client->sendevent->cache, sizeof(io_cache_t));
-        }
-    }
-    REQUIRE(client->sendevent->cache != NULL); 
-#endif
-
 	client->recvbuf = isc_mem_get(client->mctx, RECV_BUFFER_SIZE);
 	if  (client->recvbuf == NULL) {
 		result = ISC_R_NOMEMORY;
@@ -2118,26 +2098,6 @@ client_create(ns_clientmgr_t *manager, ns_client_t **clientp) {
 		result = ISC_R_NOMEMORY;
 		goto cleanup_recvbuf;
 	}
-
-#ifdef IO_USE_NETMAP
-    client->recvevent->cache = (char*)isc_mem_get(client->mctx, sizeof(io_cache_t));
-    if (client->recvevent->cache != NULL)
-    {
-       ( (io_cache_t *)client->recvevent->cache)->blocks =
-            (char*)isc_mem_get(client->mctx, sizeof(io_block_t) * IO_CACHE_BLOCKS_MAX - 1);
-        if (((io_cache_t *) client->recvevent->cache)->blocks != NULL)
-        {
-            ((io_cache_t *)client->recvevent->cache)->writep = 0;
-            ((io_cache_t *)client->recvevent->cache)->readp = 0;
-            ((io_cache_t *)client->recvevent->cache)->capcity = IO_CACHE_BLOCKS_MAX - 1;
-        }
-        else
-        {
-            isc_mem_put(client->mctx, client->recvevent->cache, sizeof(io_cache_t));
-        }
-    }
-    REQUIRE(client->recvevent->cache != NULL); 
-#endif
 
 	client->magic = NS_CLIENT_MAGIC;
 	client->manager = NULL;
@@ -2597,23 +2557,7 @@ ns_clientmgr_destroy(ns_clientmgr_t **managerp) {
 	for (client = ISC_LIST_HEAD(manager->clients);
 	     client != NULL;
 	     client = ISC_LIST_NEXT(client, link))
-#ifdef IO_USE_NETMAP
-    {
-        isc_mem_put(client->mctx, ( (io_cache_t *)client->sendevent->cache)->blocks, 
-                   sizeof(io_block_t) * IO_CACHE_BLOCKS_MAX - 1);
-        isc_mem_put(client->mctx, client->sendevent->cache, 
-                   sizeof(io_cache_t));
-
-        isc_mem_put(client->mctx,( (io_cache_t *) client->recvevent->cache)->blocks, 
-                   sizeof(io_block_t) * IO_CACHE_BLOCKS_MAX - 1);
-        isc_mem_put(client->mctx, client->recvevent->cache, 
-                   sizeof(io_cache_t));
-
-		isc_task_shutdown(client->task);
-    }
-#else
-		isc_task_shutdown(client->task);
-#endif
+		    isc_task_shutdown(client->task);
 
 	if (ISC_LIST_EMPTY(manager->clients))
 		need_destroy = ISC_TRUE;

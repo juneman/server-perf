@@ -34,7 +34,6 @@
 #include <named/log.h>
 #include <named/interfacemgr.h>
 
-// added-by-db
 #ifdef IO_USE_NETMAP
 #include "iobase.h"
 #endif
@@ -802,9 +801,8 @@ do_scan(ns_interfacemgr_t *mgr, ns_listenlist_t *ext_listen,
 		clearlistenon(mgr);
 	}
 
-// added-by-db
 #ifdef IO_USE_NETMAP
-    netmap_init(NULL);
+    netmap_init();
 #endif
 
 	for (result = isc_interfaceiter_first(iter);

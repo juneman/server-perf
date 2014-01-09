@@ -7,9 +7,8 @@
 #include "nm_util.h"
 
 static int verbose = 0;
-static pthread_mutex_t g_lock_lock = PTHREAD_MUTEX_INITIALIZER;
 
-int nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
+static int nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
 {
     struct ifreq ifr;
     int error;
@@ -144,64 +143,4 @@ int netmap_close(struct my_ring *me)
     close(me->fd);
     return (0);
 }
-
-//------------------------------------------//
-///////
-// lock impl
-int netmap_lock_init(netmap_lock_t *lock)
-{
-#if defined(NM_USE_MUTEX_LOCK)
-    return pthread_mutex_init(&(lock->lock), NULL);
-#elif defined(NM_USE_SPIN_LOCK)
-    return pthread_spin_init(&(lock->lock), PTHREAD_PROCESS_SHARED); 
-#else
-    assert(0);
-#endif
-
-}
-int netmap_lock_destroy(netmap_lock_t *lock)
-{
-#if defined(NM_USE_MUTEX_LOCK)
-    return pthread_mutex_destroy(&(lock->lock));
-#elif defined(NM_USE_SPIN_LOCK)
-    return pthread_spin_destroy(&(lock->lock));
-#else
-    assert(0);
-#endif
-
-}
-int netmap_lock(netmap_lock_t *lock)
-{
-#if defined(NM_USE_MUTEX_LOCK)
-    return pthread_mutex_lock(&(lock->lock));
-#elif defined(NM_USE_SPIN_LOCK)
-    return pthread_spin_lock(&(lock->lock));
-#else
-    assert(0);
-#endif
-
-}
-
-int netmap_trylock(netmap_lock_t *lock)
-{
-#if defined(NM_USE_MUTEX_LOCK)
-    return pthread_mutex_trylock(&(lock->lock));
-#elif defined(NM_USE_SPIN_LOCK)
-    return pthread_spin_trylock(&(lock->lock));
-#else
-    assert(0);
-#endif
-
-}
-int netmap_unlock(netmap_lock_t *lock)
-{
-#if defined(NM_USE_MUTEX_LOCK)
-    return pthread_mutex_unlock(&(lock->lock));
-#elif defined(NM_USE_SPIN_LOCK)
-    return pthread_spin_unlock(&(lock->lock));
-#else
-    assert(0);
-#endif
-}
-
 

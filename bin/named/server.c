@@ -6017,6 +6017,8 @@ loadconfig(ns_server_t *server) {
 	result = load_configuration(ns_g_lwresdonly ?
 				    lwresd_g_conffile : ns_g_conffile,
 				    server, ISC_FALSE);
+
+
 	if (result == ISC_R_SUCCESS) {
 		end_reserved_dispatches(server, ISC_FALSE);
 		isc_log_write(ns_g_lctx, NS_LOGCATEGORY_GENERAL,

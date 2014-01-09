@@ -1772,41 +1772,25 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	size_t read_count;
 	size_t actual_count;
 	isc_buffer_t *buffer;
-    io_block_t *block = NULL; 
-    
+    netmap_address_t addr;
+
     read_count = dev->region.length - dev->n;
     
-    if (dev->cache == NULL)
-    {
-	    dev->result = ISC_R_SUCCESS;
-    	return (DOIO_SOFT);
-    }
-
-    if (IS_CACHE_EMPTY((io_cache_t*)dev->cache))
-    {   
-        netmap_recv(sock->fd, (io_cache_t*)dev->cache);
-    }
-    
-    if (IS_CACHE_EMPTY((io_cache_t*)dev->cache))
+    if(NM_SUCCESS != netmap_recv(sock->fd, (char*)(dev->region.base + dev->n), &cc, &addr))
     {
 	    dev->result = ISC_R_SUCCESS;
     	return (DOIO_SOFT);
     }
     
     {
-        block = CACHE_GET_READABLE_BLOCK((io_cache_t*)dev->cache);
-        CACHE_FLUSH_R((io_cache_t*)dev->cache);
-        memcpy((char*)(dev->region.base + dev->n), block->buffer, block->data_len);
-        cc = block->data_len;
-
         dev->address.type.sin.sin_family = AF_INET;
-        dev->address.type.sin.sin_port = block->remote_port;
-        dev->address.type.sin.sin_addr.s_addr = block->remote_addr; 
+        dev->address.type.sin.sin_port = addr.remote_port;
+        dev->address.type.sin.sin_addr.s_addr = addr.remote_addr; 
 
-        dev->location.local_port = block->local_port;
-        dev->location.local_addr = block->local_addr;
-        memcpy(dev->location.local_macaddr, block->local_macaddr, 6);
-        memcpy(dev->location.remote_macaddr, block->remote_macaddr, 6);
+        dev->location.local_port = addr.local_port;
+        dev->location.local_addr = addr.local_addr;
+        memcpy(dev->location.local_macaddr, addr.local_macaddr, 6);
+        memcpy(dev->location.remote_macaddr, addr.remote_macaddr, 6);
     }
 
     dev->address.length = sizeof(dev->address.type.sin6); 
@@ -2076,30 +2060,25 @@ doio_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 static int
 doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev) 
 {
-    io_block_t block;
-    memset(&block, 0x0, sizeof(io_block_t));
-    
+    netmap_address_t addr;
+    int send_len = dev->region.length - dev->n;
     {
-        block.data_len = dev->region.length - dev->n;
-        memcpy(block.buffer, 
-                (char*)(dev->region.base + dev->n), block.data_len);
+        addr.remote_port = dev->address.type.sin.sin_port;
+        addr.remote_addr = dev->address.type.sin.sin_addr.s_addr; 
 
-        block.remote_port = dev->address.type.sin.sin_port;
-        block.remote_addr = dev->address.type.sin.sin_addr.s_addr; 
-
-        block.local_port = dev->location.local_port;
-        block.local_addr = dev->location.local_addr;
-        memcpy(block.local_macaddr, dev->location.local_macaddr, 6);
-        memcpy(block.remote_macaddr, dev->location.remote_macaddr, 6);
-
+        addr.local_port = dev->location.local_port;
+        addr.local_addr = dev->location.local_addr;
+        memcpy(addr.local_macaddr, dev->location.local_macaddr, 6);
+        memcpy(addr.remote_macaddr, dev->location.remote_macaddr, 6);
     }
-
-    netmap_send2(sock->fd, &block);
+    netmap_send(sock->fd, 
+               (char*)(dev->region.base + dev->n),
+               send_len, &addr);
 
    	/*
 	 * If we write less than we expected, update counters, poke.
 	 */
-	dev->n += block.data_len;
+	dev->n += send_len;
 
 	/*
 	 * Exactly what we wanted to write.  We're done with this
@@ -2892,7 +2871,7 @@ again:
             case isc_sockettype_netmap:
                 {
                     // Hahaaa, call netmap function.....
-                    sock->fd = netmap_getfd(ifname);
+                    sock->fd = netmap_openfd(ifname);
                     printf("\t netmap open fd:%d on %s\n", sock->fd, ifname);
                 }
 
@@ -3899,12 +3878,6 @@ internal_recv(isc_task_t *me, isc_event_t *ev) {
 	 */
 	dev = ISC_LIST_HEAD(sock->recv_list);
 	while (dev != NULL) {
-#ifdef IO_USE_NETMAP
-        if (dev->cache != NULL && !IS_CACHE_FULL((io_cache_t*)dev->cache))
-        {   
-            netmap_recv(sock->fd, (io_cache_t*)dev->cache);
-        }
-#endif
         switch (doio_recv(sock, dev)) {
 		case DOIO_SOFT:
 			goto poke;

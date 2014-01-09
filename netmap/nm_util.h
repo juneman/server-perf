@@ -9,6 +9,7 @@
 #ifndef _NM_UTIL_H
 #define _NM_UTIL_H
 #include <errno.h>
+#include <unistd.h>
 #include <assert.h>	/* signal */
 #include <stdlib.h>
 #include <stdio.h>
@@ -62,21 +63,7 @@ struct my_ring {
 	uint32_t if_curcap;
 };
 
-// lock wraper
-typedef struct __netmap_lock_t__
-{
-#ifdef NM_USE_MUTEX_LOCK
-    pthread_mutex_t lock;
-#else
-    pthread_spinlock_t lock;
-#endif
-}netmap_lock_t;
-
-int netmap_lock_init(netmap_lock_t *lock);
-int netmap_lock_destory(netmap_lock_t *lock);
-int netmap_lock(netmap_lock_t *lock);
-int netmap_trylock(netmap_lock_t *lock);
-int netmap_unlock(netmap_lock_t *lock);
-
+int netmap_open(struct my_ring *me, int ringid, int promisc);
+int netmap_close(struct my_ring *me);
 
 #endif /* _NM_UTIL_H */

@@ -36,6 +36,7 @@ OBJS =		 \
 		os.o resource.o socket.o stdio.o stdtime.o \
 		strerror.o syslog.o time.o \
 		${top_srcdir}/netmap/nm_util.o \
+		${top_srcdir}/netmap/nm_lock.o \
 		${top_srcdir}/netmap/iobase.o \
 		${top_srcdir}/netmap/dns_util.o
 
