@@ -1769,14 +1769,12 @@ dump_msg(struct msghdr *msg) {
 static int
 doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	int cc;
-	size_t read_count;
-	size_t actual_count;
 	isc_buffer_t *buffer;
     netmap_address_t addr;
 
-    read_count = dev->region.length - dev->n;
-    
-    if(NM_SUCCESS != netmap_recv(sock->fd, (char*)(dev->region.base + dev->n), &cc, &addr))
+    cc = netmap_recv(sock->fd, (char*)(dev->region.base + dev->n), 
+                       dev->region.length - dev->n, &addr);
+    if (cc <= 0)
     {
 	    dev->result = ISC_R_SUCCESS;
     	return (DOIO_SOFT);
@@ -1795,77 +1793,17 @@ doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 
     dev->address.length = sizeof(dev->address.type.sin6); 
     if (isc_sockaddr_getport(&dev->address) == 0) {
-        if (isc_log_wouldlog(isc_lctx, IOEVENT_LEVEL)) {
-            socket_log(sock, &dev->address, IOEVENT,
-                    isc_msgcat, ISC_MSGSET_SOCKET,
-                    ISC_MSG_ZEROPORT,
-                    "dropping source port zero packet");
-        }
         return (DOIO_SOFT);
     }
-    /*
-     * Simulate a firewall blocking UDP responses bigger than
-     * 512 bytes.
-     */
-    if (sock->manager->maxudp != 0 && cc > sock->manager->maxudp)
-        return (DOIO_SOFT);
-
-    socket_log(sock, &dev->address, IOEVENT,
-            isc_msgcat, ISC_MSGSET_SOCKET, ISC_MSG_PKTRECV,
-            "packet received correctly");
-
-	/*
-	 * Overflow bit detection.  If we received MORE bytes than we should,
-	 * this indicates an overflow situation.  Set the flag in the
-	 * dev entry and adjust how much we read by one.
-	 */
-#ifdef ISC_NET_RECVOVERFLOW
-	if ((size_t)cc > read_count) {
-		dev->attributes |= ISC_SOCKEVENTATTR_TRUNC;
-		cc--;
-	}
-#endif
-
-	/*
-	 * If there are control messages attached, run through them and pull
-	 * out the interesting bits.
-	 */
-	//process_cmsg(sock, &msghdr, dev);
 
 	/*
 	 * update the buffers (if any) and the i/o count
 	 */
 	dev->n += cc;
-	actual_count = cc;
-	buffer = ISC_LIST_HEAD(dev->bufferlist);
-	while (buffer != NULL && actual_count > 0U) {
-		REQUIRE(ISC_BUFFER_VALID(buffer));
-		if (isc_buffer_availablelength(buffer) <= actual_count) {
-			actual_count -= isc_buffer_availablelength(buffer);
-			isc_buffer_add(buffer,
-				       isc_buffer_availablelength(buffer));
-		} else {
-			isc_buffer_add(buffer, actual_count);
-			actual_count = 0;
-			POST(actual_count);
-			break;
-		}
-		buffer = ISC_LIST_NEXT(buffer, link);
-		if (buffer == NULL) {
-			INSIST(actual_count == 0U);
-		}
-	}
-
-	/*
-	 * If we read less than we expected, update counters,
-	 * and let the upper layer poke the descriptor.
-	 */
-	if (((size_t)cc != read_count) && (dev->n < dev->minimum))
-		return (DOIO_SOFT);
-
-	/*
-	 * Full reads are posted, or partials if partials are ok.
-	 */
+	
+    /*
+     * Full reads are posted, or partials if partials are ok.
+     */
 	dev->result = ISC_R_SUCCESS;
 	return (DOIO_SUCCESS);
 }
@@ -2061,7 +1999,7 @@ static int
 doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev) 
 {
     netmap_address_t addr;
-    int send_len = dev->region.length - dev->n;
+    int send_len = 0;
     {
         addr.remote_port = dev->address.type.sin.sin_port;
         addr.remote_addr = dev->address.type.sin.sin_addr.s_addr; 
@@ -2071,24 +2009,15 @@ doio_netmap_send(isc__socket_t *sock, isc_socketevent_t *dev)
         memcpy(addr.local_macaddr, dev->location.local_macaddr, 6);
         memcpy(addr.remote_macaddr, dev->location.remote_macaddr, 6);
     }
-    netmap_send(sock->fd, 
+    send_len = netmap_send(sock->fd, 
                (char*)(dev->region.base + dev->n),
-               send_len, &addr);
+                dev->region.length - dev->n, &addr);
 
-   	/*
-	 * If we write less than we expected, update counters, poke.
-	 */
 	dev->n += send_len;
-
-	/*
-	 * Exactly what we wanted to write.  We're done with this
-	 * entry.  Post its completion event.
-	 */
 	dev->result = ISC_R_SUCCESS;
 	return (DOIO_SUCCESS);
 }
 #endif
-
 
 /*
  * Returns:

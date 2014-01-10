@@ -16,6 +16,8 @@
 #define MAX_EVENTS 8
 #define WORKER_NUM 2
 
+#define RECV_BUFF_LEN 512
+
 static int do_abort_watcher = 0;
 static int do_abort_worker = 0;
 static int fds[WORKER_NUM];
@@ -25,8 +27,22 @@ static int sig_nums = 0;
 static int watcher_recv_nums = 0;
 static int watcher_send_nums = 0;
 
-static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t g_cond = PTHREAD_COND_INITIALIZER;
+typedef struct ___nm_args_t__
+{
+    int index;
+    int fd;
+}nm_args_t;
+
+static nm_args_t g_args[WORKER_NUM];
+
+typedef struct ___nm_cond_t__ 
+{
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+}nm_cond_t;
+
+#define ECHO_MAX_FDS 4096
+static nm_cond_t g_conds[ECHO_MAX_FDS];
 
 static pthread_t pids[WORKER_NUM];
 
@@ -42,6 +58,25 @@ static void set_dns_response(char *buff)
     char *dns = buff;
     dns[2] |= 0x80;
 }
+
+static void signal_worker(int fd)
+{
+    nm_cond_t *c = &g_conds[fd];
+
+    pthread_mutex_lock(&(c->lock));
+    pthread_cond_signal(&(c->cond));
+    pthread_mutex_unlock(&(c->lock));
+}
+
+static void wait_worker(int fd)
+{
+    nm_cond_t *c = &g_conds[fd];
+
+    pthread_mutex_lock(&(c->lock));
+    pthread_cond_wait(&(c->cond), &(c->lock));
+    pthread_mutex_unlock(&(c->lock));
+}
+
 
 void *watcher(void *arg)
 {
@@ -74,10 +109,10 @@ void *watcher(void *arg)
     D("Wait %d secs for link to come up...", wait_link);
     sleep(wait_link);
     D("Ready to go ....");
-
-    char buff[512]; 
-    int data_len = 0;
+#if 0
+    char buff[RECV_BUFF_LEN]; 
     netmap_address_t addr;
+#endif
 
     /* main loop */
     signal(SIGINT, sigint_h);
@@ -85,22 +120,34 @@ void *watcher(void *arg)
 
         nfd = epoll_wait(efd, events, MAX_EVENTS, -1);
         if (nfd < 0) continue;
-
+        
+        for (i = 0; i < nfd; i++)
+        {
+            if (events[i].events & EPOLLIN 
+                    || events[i].events & EPOLLOUT)
+            {
+                signal_worker(events[i].data.fd);
+            }
+        }
+        
+        continue;
         // process fd
+ #if 0
         pthread_mutex_lock(&g_lock);
         sig_nums ++;
         pthread_cond_broadcast(&g_cond);
         pthread_mutex_unlock(&g_lock);
 
         {
-            int ret = netmap_recv(fds[0], buff, &data_len, &addr);
-            if (ret != NM_SUCCESS) continue;
+            int recv_bytes = netmap_recv(fds[0], buff, RECV_BUFF_LEN, &addr);
+            if (recv_bytes <= 0) continue;
 
             watcher_recv_nums ++;
             set_dns_response(buff);
-            netmap_send(fds[0], buff, data_len, &addr);
+            netmap_send(fds[0], buff, recv_bytes, &addr);
             watcher_send_nums ++;
         }
+#endif
     }
     
     for (i = 0; i < WORKER_NUM; i++)
@@ -115,36 +162,34 @@ void *watcher(void *arg)
 
 void *run(void *arg)
 {
-    int id = ((int)arg);
-    
-    recv_nums[id] = 0;
-    send_nums[id] = 0;
+    nm_args_t *args = (nm_args_t*)arg;
+    int index = args->index;
+    int fd = args->fd;
 
+    recv_nums[index] = 0;
+    send_nums[index] = 0;
 
-    char buff[512]; 
-    int data_len = 0;
+    char buff[RECV_BUFF_LEN]; 
     netmap_address_t addr;
 
-    D("start run ...: id:%d", id);
+    D("start thread<index:%d><listening fd:%d>", index, fd);
     while(!do_abort_worker)
     {
-        pthread_mutex_lock(&g_lock);
-        pthread_cond_wait(&g_cond, &g_lock);
-        pthread_mutex_unlock(&g_lock);
+        wait_worker(fd);
         {
             do {
-                int ret = netmap_recv(fds[id], buff, &data_len, &addr);
-                if (ret != NM_SUCCESS) break;
+                int recv_bytes = netmap_recv(fd, buff, RECV_BUFF_LEN, &addr);
+                if (recv_bytes <= 0) break;
 
-                recv_nums[id] ++;
+                recv_nums[index] ++;
                 set_dns_response(buff);
-                netmap_send(fds[id], buff, data_len, &addr);
-                send_nums[id] ++; 
+                netmap_send(fd, buff, recv_bytes, &addr);
+                send_nums[index] ++; 
             }while(0);
         }
     }
-    
-    D("exit run ...:id:%d", id);
+
+    D("exit thread<index:%d><listening fd:%d>", index, fd);
     return NULL;
 }
 
@@ -157,14 +202,21 @@ main(int argc, char **argv)
 
     for (i = 0; i < WORKER_NUM; i++)
     {
-        pthread_create(&pids[i], NULL, run, (void*)i);
-        pthread_detach(pids[i]);
+        fds[i] = netmap_openfd("eth1"); 
+
+        pthread_mutex_init(&(g_conds[fds[i]].lock), NULL);
+        pthread_cond_init(&(g_conds[fds[i]].cond), NULL);
+
+        printf("open fd:%d\n", fds[i]);
     }
-  
+
     for (i = 0; i < WORKER_NUM; i++)
     {
-        fds[i] = netmap_openfd("eth1"); 
-        printf("open fd:%d\n", fds[i]);
+        g_args[i].index = i;
+        g_args[i].fd = fds[i];
+
+        pthread_create(&pids[i], NULL, run, (void*)&g_args[i]);
+        pthread_detach(pids[i]);
     }
    
     watcher(NULL);

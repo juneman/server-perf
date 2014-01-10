@@ -15,6 +15,8 @@
 #define MAX_EVENTS 8
 #define WORKER_NUM 4
 
+#define RECV_BUFF_LEN 512
+
 static int do_abort_watcher = 0;
 static int fds[WORKER_NUM];
 static int sig_nums = 0;
@@ -66,8 +68,7 @@ void *watcher(void *arg)
     sleep(wait_link);
     D("Ready to go ....");
 
-    char buff[512];
-    int data_len = 0;
+    char buff[RECV_BUFF_LEN];
     netmap_address_t addr;
 
     /* main loop */
@@ -77,12 +78,12 @@ void *watcher(void *arg)
         nfd = epoll_wait(efd, events, MAX_EVENTS, -1);
         if (nfd < 0) continue;
         {
-            int ret = netmap_recv(fds[0], buff, &data_len, &addr);
-            if (ret != NM_SUCCESS) continue;
+            int recv_bytes = netmap_recv(fds[0], buff, RECV_BUFF_LEN, &addr);
+            if (recv_bytes <= 0) continue;
 
             watcher_recv_nums ++;
             set_dns_response(buff);
-            netmap_send(fds[0], buff, data_len, &addr);
+            netmap_send(fds[0], buff, recv_bytes, &addr);
             watcher_send_nums ++; 
         }
     }

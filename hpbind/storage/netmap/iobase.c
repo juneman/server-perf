@@ -1,5 +1,5 @@
 /**
- * File: bind9_nm_io.c
+ * File: iobase.c
  *
  * author: db
  *
@@ -260,10 +260,10 @@ static int build_pkt_header(char *buff, int len, netmap_address_t *addr)
 }
 
 static int process_recv_ring(struct netmap_ring *rxring, 
-                char *buff, int *data_len, netmap_address_t *addr, int limit) 
+                char *buff, int buff_len, netmap_address_t *addr, int limit) 
 {
     u_int j, m = 0;
-    int recv_done = 0;
+    int recv_bytes = 0;
 
     j = rxring->cur; /* RX */
     if (rxring->avail < limit)
@@ -272,8 +272,9 @@ static int process_recv_ring(struct netmap_ring *rxring,
         struct netmap_slot *rs = &rxring->slot[j];
         char *rxbuf = NETMAP_BUF(rxring, rs->buf_idx);
 
-        if ( rs->len >= NM_PKT_BUFF_SIZE_MAX ||
-                rs->len <= PROTO_LEN)
+        if ( rs->len >= NM_PKT_BUFF_SIZE_MAX
+              || rs->len >= buff_len + PROTO_LEN
+              || rs->len <= PROTO_LEN)
         {
             goto NEXT_L;
         }
@@ -288,17 +289,16 @@ static int process_recv_ring(struct netmap_ring *rxring,
             parse_addr(rxbuf, rs->len, addr);
         }
 
-        memcpy(buff, rxbuf + PROTO_LEN , rs->len - PROTO_LEN);
-        *data_len = rs->len - PROTO_LEN;
+        recv_bytes = rs->len - PROTO_LEN;
+        memcpy(buff, rxbuf + PROTO_LEN , recv_bytes);
 
-        recv_done = 1;
 NEXT_L:	
         j = NETMAP_RING_NEXT(rxring, j);
         m++;
 
         rs->flags |= NS_BUF_CHANGED;
 
-        if (recv_done == 1) 
+        if (recv_bytes > 0) 
         {
             break;
         }
@@ -307,10 +307,10 @@ NEXT_L:
     rxring->avail -= m;
     rxring->cur = j;
     
-    if (recv_done == 0) 
-        return NM_FAILED;
+    if (recv_bytes <= 0) 
+        return NM_ERR_FAILED;
 
-    return (NM_SUCCESS);
+    return (recv_bytes);
 }
 
 static int process_send_ring(struct netmap_ring *txring, 
@@ -319,6 +319,8 @@ static int process_send_ring(struct netmap_ring *txring,
     u_int k = txring->cur; /* TX */
     struct netmap_slot *ts = &txring->slot[k];
     char *txbuf = NETMAP_BUF(txring, ts->buf_idx);
+    
+    assert(data_len > 0);
 
     ts->len = data_len + PROTO_LEN; 
     memcpy(txbuf + PROTO_LEN, buff, data_len);
@@ -331,15 +333,15 @@ static int process_send_ring(struct netmap_ring *txring,
     txring->avail -= 1;
     txring->cur = k;
 
-    return (NM_SUCCESS);
+    return (data_len);
 }
 
 static int netmap_recv_from_ring(struct my_ring *src, 
-                char *buff, int *data_len, netmap_address_t *addr, int limit)
+                char *buff, int buff_len, netmap_address_t *addr, int limit)
 {
     struct netmap_ring *rxring;
     u_int ri = src->begin;
-    int ret = NM_FAILED;
+    int ret = NM_ERR_FAILED;
 
     while (ri < src->end) 
     {
@@ -350,8 +352,8 @@ static int netmap_recv_from_ring(struct my_ring *src,
             continue;
         }
 
-        ret = process_recv_ring(rxring, buff, data_len, addr, limit);
-        if (ret == NM_SUCCESS) 
+        ret = process_recv_ring(rxring, buff, buff_len, addr, limit);
+        if (ret > 0) 
         {
             break;
         }
@@ -366,8 +368,9 @@ static int netmap_send_to_ring(struct my_ring *src,
             char *buff, int data_len, netmap_address_t *addr)
 {
     struct netmap_ring *txring;
-    u_int ret = 0, ti=src->begin;
+    u_int ti=src->begin;
     int times = 1;
+    int ret = NM_ERR_FAILED;
 
 LOOP_L:
     ti=src->begin;
@@ -381,7 +384,7 @@ LOOP_L:
         }   
 
         ret = process_send_ring(txring, buff, data_len, addr);
-        if (ret == NM_SUCCESS) 
+        if (ret > 0) 
         {
             return ret;
         }
@@ -389,40 +392,39 @@ LOOP_L:
         ti ++;
     }
 
-    if (ret != NM_SUCCESS && times > 0)
+    if (ret <= 0 && times > 0)
     {
-        int err = 0;
         struct nmreq req;
         bzero(&req, sizeof(req));
         req.nr_version = NETMAP_API;
         strncpy(req.nr_name, src->ifname, sizeof(req.nr_name));
         req.nr_ringid = 0;
-        err = ioctl(src->fd, NIOCTXSYNC, &req);
+        ioctl(src->fd, NIOCTXSYNC, &req);
         times --;
         goto LOOP_L;
     }
 
-    return NM_FAILED;
+    return NM_ERR_FAILED;
 }
 
-int netmap_recv(int fd, char *buff, int *data_len, netmap_address_t *addr) 
+int netmap_recv(int fd, char *buff, int buff_len, netmap_address_t *addr) 
 {
-    int ret = NM_FAILED;
+    int ret = NM_ERR_FAILED;
     netmap_interfaces_info_t *info = NULL;
 
-    if (buff == NULL || data_len == NULL)
+    if (buff == NULL || buff_len <= 0)
     {
-        return NM_ARGS_NULL;
+        return NM_ERR_ARGS_NULL;
     }
 
     info = netmap_get_interfaces_info(fd);
     if (info == NULL)
     {
-        return NM_MEM_ERROR;
+        return NM_ERR_MEM_ERROR;
     }
 
     netmap_lock(&(info->lock.recv_lock));
-    ret = netmap_recv_from_ring(&(info->ring), buff, data_len, addr, g_limit);
+    ret = netmap_recv_from_ring(&(info->ring), buff, buff_len, addr, g_limit);
     netmap_unlock(&(info->lock.recv_lock));
 
     return ret;
@@ -430,18 +432,18 @@ int netmap_recv(int fd, char *buff, int *data_len, netmap_address_t *addr)
 
 int netmap_send(int fd, char *buff, int data_len, netmap_address_t *addr)
 {
-    int ret = NM_FAILED;
+    int ret = NM_ERR_FAILED;
     netmap_interfaces_info_t *info = NULL;
 
     if (buff == NULL || data_len <= 0 || addr == NULL)
     {
-        return NM_ARGS_NULL;
+        return NM_ERR_ARGS_NULL;
     }
 
     info = netmap_get_interfaces_info(fd);
     if (info == NULL)
     {
-        return NM_MEM_ERROR;
+        return NM_ERR_MEM_ERROR;
     }
 
     netmap_lock(&(info->lock.send_lock));

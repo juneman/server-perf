@@ -34,17 +34,17 @@ int netmap_closefd(int fd);
 
 // fd : netmap file descriptor
 // buff: to store recv data from netmap, must NOT NULL
-// data_len: to store length of recv data, MUST NOT NULL
+// buff_len: buff's size 
 // addr: packet addr info, if NULL, cannt get address from packt
-// return 
-int netmap_recv(int fd, char *buff, int *data_len, netmap_address_t *addr);
+// return: actual recv data length, if <= 0 , occured an error. 
+int netmap_recv(int fd, char *buff, int buff_len, netmap_address_t *addr);
 
 
 // fd : netmap file descriptor
 // buff: need to send buff, MUST NOT NULL
 // data_len: length of data,  MUST > 0 ...
 // addr: packet addr info, MUST NOT NULL
-// return: 0, send ok. !0 send error.
+// return: actual send data length, if <= 0, occured an error.
 int netmap_send(int fd, char *buff, int data_len, netmap_address_t *addr);
 
 #endif // end of __IOBASE_H
