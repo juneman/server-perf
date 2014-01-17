@@ -9,9 +9,10 @@ NM_LIB_PATH=../
 NM_LIB=nmio
 NM_INC=../iobase.h
 
+CC=gcc
 CLEANFILES=$(PROGS) *.o
 CFLAGS= -g 
-#CFLAGS += -Werror -Wall
+CFLAGS += -Werror -Wall
 CFLAGS += -I ../ 
 
 LDFLAGS += -L$(NM_LIB_PATH) -lpthread -l$(NM_LIB)

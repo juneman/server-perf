@@ -3,13 +3,13 @@
 # author: db
 #
 
-TESTSUIT = squeue_test slist_test
+TESTSUIT = squeue_test slist_test spip_test
 
 NM_LIB_PATH=../
 NM_LIB=nmio
 NM_INC=../iobase.h
 
-CLEANFILES=$(PROGS) *.o
+CLEANFILES=$(TESTSUIT) *.o
 CFLAGS= -g 
 CFLAGS += -Werror -Wall
 CFLAGS += -I ../ 
@@ -24,6 +24,11 @@ squeue_test: squeue_test.o test.o
 
 slist_test: slist_test.o test.o 
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+spip_test: spip_test.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+
 
 prebuild:
 	make -C ../

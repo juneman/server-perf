@@ -22,12 +22,12 @@ typedef struct __sqmsg_t__
     unsigned char dirty;
     short refs;
 
-#define SQMSG_SIZE_MAX (512)
-    char buff[SQMSG_SIZE_MAX]; 
+#define SQMSG_SIZE_MAX (511)
+    char buff[SQMSG_SIZE_MAX + 1]; 
     int len;
 
-#define SQMSG_EXT_BUFF_SIZE (512)
-    char extbuff[SQMSG_EXT_BUFF_SIZE];
+#define SQMSG_EXT_BUFF_SIZE (511)
+    char extbuff[SQMSG_EXT_BUFF_SIZE + 1];
     slist_node_t node;
 }sqmsg_t;
 
@@ -48,5 +48,6 @@ inline int squeue_signal(squeue_t *sq);
 inline int squeue_wait(squeue_t *sq);
 
 inline int squeue_empty(squeue_t *sq);
+inline int squeue_clear(squeue_t *sq);
 
 #endif

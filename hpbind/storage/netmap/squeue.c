@@ -102,3 +102,11 @@ inline int squeue_wait(squeue_t *sq)
 {
     return scond_wait(&(sq->cond));
 }
+
+inline int squeue_clear(squeue_t *sq)
+{
+    // TODO: 
+    return 0;
+}
+
+

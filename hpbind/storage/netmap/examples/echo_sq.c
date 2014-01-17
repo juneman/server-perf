@@ -125,17 +125,9 @@ TRY_RX:
             int recv_bytes = netmap_recv(g_fd, msg->buff, SQMSG_SIZE_MAX, addr);
             if (recv_bytes > 0) 
             { 
-             /*   D("recv qid:%x %x,"
-                        "local port:%d,remote port:%d,"
-                        "local addr:%d, remote addr:%d ",
-                        msg->buff[0], msg->buff[1], \
-                        addr->local_port, addr->remote_port, \
-                        addr->local_addr,addr->remote_addr);
-               */
                 set_dns_response(msg->buff);
                 msg->len = recv_bytes;
                 squeue_push(&g_recv_queue, msg);
-                //squeue_push(&g_send_queue, msg);
                 watcher_recv_nums ++;
             }
             else
@@ -149,14 +141,6 @@ TRY_TX:
         msg = squeue_pop(&g_send_queue);
         if (NULL != msg) 
         {
-            netmap_address_t *addr = (netmap_address_t *)(&msg->extbuff);
-/*            D("send qid:%x %x," 
-                    "local port:%d,remote port:%d,"
-                    "local addr:%d, remote addr:%d ",
-                    msg->buff[0], msg->buff[1], \
-                    addr->local_port, addr->remote_port, \
-                    addr->local_addr,addr->remote_addr);
-*/
             int send_bytes = netmap_send(g_fd, msg->buff, msg->len, (netmap_address_t*)(msg->extbuff));
             squeue_push(&g_idle_queue, msg);
             if (send_bytes > 0) 

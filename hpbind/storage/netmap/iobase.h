@@ -13,9 +13,9 @@
 #include "slock.h"
 #include "dns_util.h"
 #include "build.h"
+#include "squeue.h"
 
-
-#define NM_PKT_BUFF_SIZE_MAX 1024 
+#define NM_PKT_BUFF_SIZE_MAX (SQMSG_SIZE_MAX)
 typedef struct __netmap_address_t__ {
     unsigned char local_macaddr[6];
     unsigned char remote_macaddr[6];
@@ -28,6 +28,9 @@ typedef struct __netmap_address_t__ {
 /// for netmap fd
 int netmap_init(void);
 int netmap_destroy(void);
+void netmap_setup(void);
+void netmap_teardown(void);
+
 int netmap_openfd(const char *ifname);
 int netmap_closefd(int fd);
 

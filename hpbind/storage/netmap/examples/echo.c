@@ -8,12 +8,12 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <sys/epoll.h>
 #include "iobase.h"
-#include "sys/epoll.h"
-#include "pthread.h"
 
 #define MAX_EVENTS 8
-#define WORKER_NUM 4
+#define WORKER_NUM 1
 
 #define RECV_BUFF_LEN 512
 
@@ -105,6 +105,8 @@ main(int argc, char **argv)
         D("open fd:%d", fds[i]);
     }
    
+    netmap_setup();
+
     watcher(NULL);
     
     for (i = 0; i < WORKER_NUM; i++)

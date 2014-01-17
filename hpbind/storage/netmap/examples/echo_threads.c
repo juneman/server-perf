@@ -14,13 +14,13 @@
 #include "pthread.h"
 
 #define MAX_EVENTS 8
-#define WORKER_NUM 2
+#define WORKER_NUM 4
 
 #define RECV_BUFF_LEN 512
 
 static int do_abort_watcher = 0;
 static int do_abort_worker = 0;
-static int fds[WORKER_NUM];
+static int g_fd = -1;
 static int recv_nums[WORKER_NUM];
 static int send_nums[WORKER_NUM];
 static int sig_nums = 0;
@@ -41,8 +41,7 @@ typedef struct ___nm_cond_t__
     pthread_cond_t cond;
 }nm_cond_t;
 
-#define ECHO_MAX_FDS 4096
-static nm_cond_t g_conds[ECHO_MAX_FDS];
+static nm_cond_t g_conds;
 
 static pthread_t pids[WORKER_NUM];
 
@@ -61,16 +60,16 @@ static void set_dns_response(char *buff)
 
 static void signal_worker(int fd)
 {
-    nm_cond_t *c = &g_conds[fd];
+    nm_cond_t *c = &g_conds;
 
     pthread_mutex_lock(&(c->lock));
-    pthread_cond_signal(&(c->cond));
+    pthread_cond_broadcast(&(c->cond));
     pthread_mutex_unlock(&(c->lock));
 }
 
 static void wait_worker(int fd)
 {
-    nm_cond_t *c = &g_conds[fd];
+    nm_cond_t *c = &g_conds;
 
     pthread_mutex_lock(&(c->lock));
     pthread_cond_wait(&(c->cond), &(c->lock));
@@ -80,7 +79,7 @@ static void wait_worker(int fd)
 
 void *watcher(void *arg)
 {
-	struct epoll_event event[WORKER_NUM], *events;
+	struct epoll_event event, *events;
 	int nfd, efd, s;
     int wait_link = 2;
     int i = 0;
@@ -93,11 +92,10 @@ void *watcher(void *arg)
 		return 0;
 	}
    	
-	for (i = 0; i < WORKER_NUM; i++) 
 	{ 
-		event[i].data.fd = fds[i]; 
-		event[i].events = EPOLLIN | EPOLLOUT;
-		s = epoll_ctl(efd, EPOLL_CTL_ADD, fds[i], &event[i]);
+		event.data.fd = g_fd; 
+		event.events = EPOLLIN | EPOLLOUT;
+		s = epoll_ctl(efd, EPOLL_CTL_ADD, g_fd, &event);
 		if (s == -1) {
 			printf("epoll_ctl error \n");
 			return 0;
@@ -109,10 +107,6 @@ void *watcher(void *arg)
     D("Wait %d secs for link to come up...", wait_link);
     sleep(wait_link);
     D("Ready to go ....");
-#if 0
-    char buff[RECV_BUFF_LEN]; 
-    netmap_address_t addr;
-#endif
 
     /* main loop */
     signal(SIGINT, sigint_h);
@@ -131,24 +125,7 @@ void *watcher(void *arg)
         }
         
         continue;
-        // process fd
- #if 0
-        pthread_mutex_lock(&g_lock);
-        sig_nums ++;
-        pthread_cond_broadcast(&g_cond);
-        pthread_mutex_unlock(&g_lock);
-
-        {
-            int recv_bytes = netmap_recv(fds[0], buff, RECV_BUFF_LEN, &addr);
-            if (recv_bytes <= 0) continue;
-
-            watcher_recv_nums ++;
-            set_dns_response(buff);
-            netmap_send(fds[0], buff, recv_bytes, &addr);
-            watcher_send_nums ++;
-        }
-#endif
-    }
+     }
     
     for (i = 0; i < WORKER_NUM; i++)
     {
@@ -199,32 +176,31 @@ int main(int argc, char **argv)
     
     netmap_init();
 
-    for (i = 0; i < WORKER_NUM; i++)
-    {
-        fds[i] = netmap_openfd("eth1"); 
+    g_fd = netmap_openfd("eth1"); 
 
-        pthread_mutex_init(&(g_conds[fds[i]].lock), NULL);
-        pthread_cond_init(&(g_conds[fds[i]].cond), NULL);
+    pthread_mutex_init(&(g_conds.lock), NULL);
+    pthread_cond_init(&(g_conds.cond), NULL);
 
-        printf("open fd:%d\n", fds[i]);
-    }
+    printf("open fd:%d\n", g_fd);
 
     for (i = 0; i < WORKER_NUM; i++)
     {
         g_args[i].index = i;
-        g_args[i].fd = fds[i];
+        g_args[i].fd = g_fd;
 
         pthread_create(&pids[i], NULL, run, (void*)&g_args[i]);
         pthread_detach(pids[i]);
     }
-   
+    
+    netmap_setup();
+
     watcher(NULL);
     
+    netmap_teardown();
+
     sleep(1);
-    for (i = 0; i < WORKER_NUM; i++)
-    {
-        netmap_closefd(fds[i]);
-    }
+    netmap_closefd(g_fd);
+    
 
     netmap_destroy();
 
