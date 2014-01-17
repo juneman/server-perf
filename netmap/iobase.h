@@ -14,7 +14,6 @@
 #include "dns_util.h"
 #include "build.h"
 
-#define PROTO_LEN (14 + 20 + 8)
 
 #define NM_PKT_BUFF_SIZE_MAX 512 
 typedef struct __netmap_address_t__ {
@@ -45,6 +44,6 @@ int netmap_recv(int fd, char *buff, int buff_len, netmap_address_t *addr);
 // data_len: length of data,  MUST > 0 ...
 // addr: packet addr info, MUST NOT NULL
 // return: actual send data length, if <= 0, occured an error.
-int netmap_send(int fd, char *buff, int data_len, netmap_address_t *addr);
+int netmap_send(int fd, const char *buff, int data_len, const netmap_address_t *addr);
 
 #endif // end of __IOBASE_H

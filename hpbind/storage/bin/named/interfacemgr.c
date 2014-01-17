@@ -457,15 +457,13 @@ ns_interface_setup(ns_interfacemgr_t *mgr, isc_sockaddr_t *addr,
   
   // added-by-db 
 #ifdef IO_USE_NETMAP
-    printf("%s:%s:%d. IO USE NETMAP.\n", __FILE__,__FUNCTION__,__LINE__);
-    fflush(stdout);
     if (strncmp(name, "eth1", 5) != 0) 
     {
         result = ns_interface_listenudp(ifp);
     }
     else
     {
-        printf(" listen netmap on interface:%s\n", name);
+        printf("netmap listen on interface:%s\n", name);
         fflush(stdout);
         result = ns_interface_listen_netmap(ifp);
     }

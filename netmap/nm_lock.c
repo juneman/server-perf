@@ -20,6 +20,7 @@ int netmap_lock_init(netmap_lock_t *lock)
 #endif
 
 }
+
 int netmap_lock_destroy(netmap_lock_t *lock)
 {
 #if defined(NM_USE_MUTEX_LOCK)

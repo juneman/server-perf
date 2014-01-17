@@ -4,6 +4,7 @@
  * author: db
  *
  */
+#include "types.h"
 #include "nm_util.h"
 
 static int verbose = 0;
@@ -18,7 +19,7 @@ static int nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
     fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {
         printf("Error: cannot get device control socket.\n");
-        return -1;
+        return NM_R_FAILED;
     }
 
     (void)subcmd;	// unused
@@ -50,8 +51,11 @@ static int nm_do_ioctl(struct my_ring *me, u_long what, int subcmd)
 done:
     close(fd);
     if (error)
+    {
         D("ioctl error %d %lu", error, what);
-    return error;
+        return NM_R_FAILED;
+    }
+    return NM_R_SUCCESS;
 }
 
 /*
@@ -67,7 +71,7 @@ int netmap_open(struct my_ring *me, int ringid, int promisc)
     me->fd = fd = open("/dev/netmap", O_RDWR);
     if (fd < 0) {
         D("Unable to open /dev/netmap");
-        return (-1);
+        return NM_R_FAILED;
     }
     bzero(&req, sizeof(req));
     req.nr_version = NETMAP_API;
@@ -129,10 +133,10 @@ int netmap_open(struct my_ring *me, int ringid, int promisc)
         me->tx = NETMAP_TXRING(me->nifp, 0);
         me->rx = NETMAP_RXRING(me->nifp, 0);
     }
-    return (0);
+    return NM_R_SUCCESS;
 error:
     close(me->fd);
-    return -1;
+    return NM_R_FAILED;
 }
 
 int netmap_close(struct my_ring *me)
@@ -140,7 +144,6 @@ int netmap_close(struct my_ring *me)
     D("");
     if (me->mem)
         munmap(me->mem, me->memsize);
-    close(me->fd);
-    return (0);
+    return NM_R_SUCCESS;
 }
 

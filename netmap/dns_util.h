@@ -8,6 +8,7 @@
 #define __DNS_UTIL_H
 
 #include "config.h"
+#include "types.h"
 
 struct pesudo_udphdr { 
     unsigned int saddr, daddr; 
@@ -16,7 +17,7 @@ struct pesudo_udphdr {
     unsigned short udplen; 
 }; 
 
-unsigned short in_cksum(unsigned short *addr, int len); 
-int is_dns_query(char *buff, int len);
+unsigned short in_cksum(const unsigned short *addr, int len); 
+NM_BOOL is_dns_query(const char *buff, int len);
     
 #endif // end of __DNS_UTIL_H

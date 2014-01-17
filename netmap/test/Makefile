@@ -10,7 +10,7 @@ NM_LIB=nmio
 NM_INC=../iobase.h
 
 CLEANFILES=$(PROGS) *.o
-CFLAGS= -g -O2 
+CFLAGS= -g 
 CFLAGS += -Werror -Wall
 CFLAGS += -I ../ 
 

@@ -14,7 +14,7 @@ static int g_limit = 512;
 static pthread_mutex_t g_nm_inited_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_nm_inited = 0;
 
-static unsigned short g_ip_id_next = 0x12a;
+static unsigned short g_ip_id_next = 0x11;
 
 typedef struct __netmap_io_lock_t__ {
     netmap_lock_t recv_lock;
@@ -28,24 +28,27 @@ typedef struct __netmap_interfaces_info_t__ {
     struct my_ring ring;
     char ifname[NM_IFNAME_SIZE + 1];
     int fd;
+    int refcount;
     netmap_io_lock_t lock;
 }netmap_interfaces_info_t;
 
 static int g_interfaces_index = -1;
 static netmap_interfaces_info_t g_interfaces_info[NM_INTERFACES_NUM];
+static netmap_lock_t g_ifinfo_mgtlock;
 
 #define MAX_FDS (4096)
 static netmap_interfaces_info_t *g_fd_if_map[MAX_FDS];
 
-static int netmap_init_interfaces_info() 
+static void netmap_init_interfaces_info() 
 {
+    g_interfaces_index = -1;
     memset(g_interfaces_info, 0x0, NM_INTERFACES_NUM * sizeof(netmap_interfaces_info_t));
     memset(g_fd_if_map, 0x0, MAX_FDS * sizeof(netmap_interfaces_info_t*));
-    return 0;
+    netmap_lock_init(&g_ifinfo_mgtlock);
 }
 
 // must by locked by g_netmap_fd_lock by caller
-static netmap_interfaces_info_t * netmap_alloc_user_info_node(const char *ifname)
+static netmap_interfaces_info_t * netmap_get_available_if_info_node(const char *ifname)
 {
     int i = 0;
     netmap_interfaces_info_t * info = NULL; 
@@ -58,19 +61,20 @@ static netmap_interfaces_info_t * netmap_alloc_user_info_node(const char *ifname
             return info;
         }
     }
-    
+
     info = NULL;
+
     g_interfaces_index ++;
     if (g_interfaces_index >= NM_INTERFACES_NUM)
     {
         return NULL;
     }
-    
+
     info = &g_interfaces_info[g_interfaces_index];
-    if (info == NULL) 
-        return NULL;
+    memset(info, 0x0, sizeof(netmap_interfaces_info_t));
     info->ring.mem = NULL;
     info->fd = -1;
+    info->refcount = 1;
 
     netmap_lock_init(&(info->lock.send_lock));
     netmap_lock_init(&(info->lock.recv_lock));
@@ -78,40 +82,74 @@ static netmap_interfaces_info_t * netmap_alloc_user_info_node(const char *ifname
     return info;
 }
 
+static netmap_interfaces_info_t* netmap_get_interfaces_info(int fd)
+{
+    if (fd < MAX_FDS)
+    {
+        return g_fd_if_map[fd];
+    }
+
+    D("err: fd > %d", MAX_FDS);
+    return NULL;
+}
+
+static void netmap_set_interfaces_info(int fd, netmap_interfaces_info_t * info)
+{
+    if (fd < MAX_FDS)
+    {
+        g_fd_if_map[fd] = info;
+    }
+    else
+    {
+        D("err: fd > %d", MAX_FDS);
+    }
+}
+
 int netmap_openfd(const char *ifname)
 {
-    int fd = -1;
+    int fd = -1, err = -1;
     netmap_interfaces_info_t *info = NULL;
-    
-    info = netmap_alloc_user_info_node(ifname);
+
+    netmap_lock(&g_ifinfo_mgtlock);
+
+    info = netmap_get_available_if_info_node(ifname);
     if (info == NULL)
     {
-        return -1;
+        return NM_R_FAILED;
     }
 
     if (info->fd > 0)
     {
         fd = dup(info->fd);
+        info->refcount ++;
         goto UPDATE_FDS;
     }
 
     strncpy(info->ifname, ifname, NM_IFNAME_SIZE);
     info->ring.ifname = info->ifname;
-    netmap_open(&info->ring, 0, 0);
-    
+    err = netmap_open(&info->ring, 0, 0);
+
+    if (err != NM_R_SUCCESS)
+    {
+        goto END_L;
+    }
+
     if (info->ring.fd >= MAX_FDS)
     {
-        return -1;
+        netmap_close(&(info->ring));
+        close(info->ring.fd);
+        goto END_L;
     }
 
     info->fd = info->ring.fd;
     fd = info->fd;
 
 UPDATE_FDS:
-    if (g_fd_if_map[fd] == NULL) 
-    {
-        g_fd_if_map[fd] = info;
-    }
+    netmap_set_interfaces_info(fd, info);
+
+END_L:
+    D("refcount:%d", info->refcount);
+    netmap_unlock(&g_ifinfo_mgtlock);
 
     return fd;
 }
@@ -119,30 +157,42 @@ UPDATE_FDS:
 int netmap_closefd(int fd)
 {
     netmap_interfaces_info_t *info = NULL;
-    
-    info = g_fd_if_map[fd];
+
+    netmap_lock(&g_ifinfo_mgtlock);
+
+    info = netmap_get_interfaces_info(fd);
     if (info == NULL)
     {
-        return -1;
+        return NM_R_FAILED;
     }
 
-    netmap_close(&(info->ring));
-    g_fd_if_map[fd] = NULL;
+    D("refcount:%d", info->refcount);
+    info->refcount --;
+    if (info->refcount <= 0)
+    {
+        netmap_lock_destroy(&(info->lock.send_lock));
+        netmap_lock_destroy(&(info->lock.recv_lock));
+        netmap_close(&(info->ring));
+    }
 
-    return 0;
+    close(fd);
+    netmap_set_interfaces_info(fd, NULL);
+
+    netmap_unlock(&g_ifinfo_mgtlock);
+
+    return NM_R_SUCCESS;
 }
 
-static netmap_interfaces_info_t* netmap_get_interfaces_info(int fd)
+static int parse_addr(const char *buff, int len, netmap_address_t *addr)
 {
-    return g_fd_if_map[fd];
-}
+    struct ethhdr *eh = NULL; 
+    struct iphdr *ip = NULL; 
+    struct udphdr *udp = NULL; 
+    char *ip_buff = NULL;
 
-static int parse_addr(char *buff, int len, netmap_address_t *addr)
-{
-    struct iphdr *ip;
-    struct udphdr *udp;
-    char *ip_buff = buff + 14;
-
+    eh = (struct ethhdr *)buff;
+    ip_buff =(char*) (((char*)eh) + sizeof(struct ethhdr));
+    
     ip = (struct iphdr*) (ip_buff);
     udp = (struct udphdr *) (ip_buff + sizeof(struct iphdr));
 
@@ -175,12 +225,12 @@ static int parse_addr(char *buff, int len, netmap_address_t *addr)
                 qid);
     }
 
-    return 0;
+    return NM_R_SUCCESS;
 }
 
-static int build_pkt_header(char *buff, int len, netmap_address_t *addr)
+static int build_pkt_header(char *buff, int len, const netmap_address_t *addr)
 {
-    char check_buf[NM_PKT_BUFF_SIZE_MAX] = {0};
+    char check_buf[NM_PKT_BUFF_SIZE_MAX + 1] = {0};
     unsigned short qid = 0;
     char *ip_buff = buff + 14;
 
@@ -189,7 +239,7 @@ static int build_pkt_header(char *buff, int len, netmap_address_t *addr)
 
     char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
     qid = ((unsigned short*) query)[0];
-    
+
     // Filling Ethnet header
     {
         memcpy(buff, addr->remote_macaddr, 6);
@@ -228,7 +278,7 @@ static int build_pkt_header(char *buff, int len, netmap_address_t *addr)
     ip->tos = 0;
     ip->frag_off = 0;
     ip->ttl = 64;
-    ip->protocol = 17;
+    ip->protocol = IPPROTO_UDP;
     ip->check = 0;
     ip->check = in_cksum((unsigned short *)ip_buff, sizeof(struct iphdr));  
 
@@ -242,7 +292,7 @@ static int build_pkt_header(char *buff, int len, netmap_address_t *addr)
         int udp_len = len - sizeof(struct iphdr ) - 14;
         udp->len = htons(udp_len);
 
-        memset(check_buf, 0x0, 512);
+        memset(check_buf, 0x0, NM_PKT_BUFF_SIZE_MAX + 1);
         memcpy(check_buf + sizeof(struct pesudo_udphdr), (char*)udp, udp_len);
         struct pesudo_udphdr * pudph = (struct pesudo_udphdr *)check_buf;
 
@@ -256,11 +306,11 @@ static int build_pkt_header(char *buff, int len, netmap_address_t *addr)
                 udp_len +  sizeof(struct pesudo_udphdr) );
     }
 
-    return 0;
+    return NM_R_SUCCESS;
 }
 
 static int process_recv_ring(struct netmap_ring *rxring, 
-                char *buff, int buff_len, netmap_address_t *addr, int limit) 
+        char *buff, int buff_len, netmap_address_t *addr, int limit) 
 {
     u_int j, m = 0;
     int recv_bytes = 0;
@@ -273,17 +323,17 @@ static int process_recv_ring(struct netmap_ring *rxring,
         char *rxbuf = NETMAP_BUF(rxring, rs->buf_idx);
 
         if ( rs->len >= NM_PKT_BUFF_SIZE_MAX
-              || rs->len >= buff_len + PROTO_LEN
-              || rs->len <= PROTO_LEN)
+                || rs->len >= buff_len + PROTO_LEN
+                || rs->len <= PROTO_LEN)
         {
             goto NEXT_L;
         }
 
-        if (0 != is_dns_query(rxbuf, rs->len)) 
+        if (NM_TRUE != is_dns_query(rxbuf, rs->len)) 
         {
-           goto NEXT_L; /* best effort! */
+            goto NEXT_L; /* best effort! */
         }
-        
+
         if (addr != NULL)
         {
             parse_addr(rxbuf, rs->len, addr);
@@ -306,20 +356,22 @@ NEXT_L:
 
     rxring->avail -= m;
     rxring->cur = j;
-    
+
     if (recv_bytes <= 0) 
-        return NM_ERR_FAILED;
+    {
+        return NM_R_FAILED;
+    }
 
     return (recv_bytes);
 }
 
 static int process_send_ring(struct netmap_ring *txring, 
-                char *buff, int data_len, netmap_address_t *addr)
+        const char *buff, int data_len, const netmap_address_t *addr)
 {
     u_int k = txring->cur; /* TX */
     struct netmap_slot *ts = &txring->slot[k];
     char *txbuf = NETMAP_BUF(txring, ts->buf_idx);
-    
+
     assert(data_len > 0);
 
     ts->len = data_len + PROTO_LEN; 
@@ -337,11 +389,11 @@ static int process_send_ring(struct netmap_ring *txring,
 }
 
 static int netmap_recv_from_ring(struct my_ring *src, 
-                char *buff, int buff_len, netmap_address_t *addr, int limit)
+        char *buff, int buff_len, netmap_address_t *addr, int limit)
 {
     struct netmap_ring *rxring;
     u_int ri = src->begin;
-    int ret = NM_ERR_FAILED;
+    int ret = NM_R_FAILED;
 
     while (ri < src->end) 
     {
@@ -365,12 +417,12 @@ static int netmap_recv_from_ring(struct my_ring *src,
 }
 
 static int netmap_send_to_ring(struct my_ring *src, 
-            char *buff, int data_len, netmap_address_t *addr)
+        const char *buff, int data_len, const netmap_address_t *addr)
 {
     struct netmap_ring *txring;
     u_int ti=src->begin;
     int times = 1;
-    int ret = NM_ERR_FAILED;
+    int ret = NM_R_FAILED;
 
 LOOP_L:
     ti=src->begin;
@@ -404,23 +456,23 @@ LOOP_L:
         goto LOOP_L;
     }
 
-    return NM_ERR_FAILED;
+    return NM_R_FAILED;
 }
 
 int netmap_recv(int fd, char *buff, int buff_len, netmap_address_t *addr) 
 {
-    int ret = NM_ERR_FAILED;
+    int ret = NM_R_FAILED;
     netmap_interfaces_info_t *info = NULL;
 
     if (buff == NULL || buff_len <= 0)
     {
-        return NM_ERR_ARGS_NULL;
+        return NM_R_ARGS_NULL;
     }
 
     info = netmap_get_interfaces_info(fd);
     if (info == NULL)
     {
-        return NM_ERR_MEM_ERROR;
+        return NM_R_FD_OUTOFBIND;
     }
 
     netmap_lock(&(info->lock.recv_lock));
@@ -430,20 +482,23 @@ int netmap_recv(int fd, char *buff, int buff_len, netmap_address_t *addr)
     return ret;
 }
 
-int netmap_send(int fd, char *buff, int data_len, netmap_address_t *addr)
+int netmap_send(int fd, const char *buff, int data_len, const netmap_address_t *addr)
 {
-    int ret = NM_ERR_FAILED;
+    int ret = NM_R_FAILED;
     netmap_interfaces_info_t *info = NULL;
 
-    if (buff == NULL || data_len <= 0 || addr == NULL)
+    if (buff == NULL 
+            || data_len <= 0 
+            || data_len >= NM_PKT_BUFF_SIZE_MAX
+            || addr == NULL )
     {
-        return NM_ERR_ARGS_NULL;
+        return NM_R_ARGS_NULL;
     }
 
     info = netmap_get_interfaces_info(fd);
     if (info == NULL)
     {
-        return NM_ERR_MEM_ERROR;
+        return NM_R_FD_OUTOFBIND;
     }
 
     netmap_lock(&(info->lock.send_lock));
@@ -458,12 +513,12 @@ int netmap_init(void)
 {
     if (pthread_mutex_trylock(&g_nm_inited_lock) == EBUSY)
     {
-        return NM_SUCCESS;
+        return NM_R_SUCCESS; 
     }
 
     if (g_nm_inited == 1)
     {
-        return NM_SUCCESS;
+        return NM_R_SUCCESS; 
     }
 
     g_nm_inited = 1;
@@ -484,11 +539,12 @@ int netmap_init(void)
 
     pthread_mutex_unlock(&g_nm_inited_lock);
 
-    return NM_SUCCESS;
+    return NM_R_SUCCESS; 
 }
 
 int netmap_destroy(void)
 {
-    // do cleanup work
-    return NM_SUCCESS;
+    pthread_mutex_destroy(&g_nm_inited_lock);
+    netmap_lock_destroy(&g_ifinfo_mgtlock);
+    return NM_R_SUCCESS; 
 }

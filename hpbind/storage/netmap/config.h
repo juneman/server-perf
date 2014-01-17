@@ -12,8 +12,4 @@
 // for enable/disable debug
 #define NM_DEBUG
 
-// lock lib
-#define NM_USE_MUTEX_LOCK
-//#define NM_USE_SPIN_LOCK
-
 #endif /* _CONFIG_H */

@@ -10,7 +10,7 @@
 #include <linux/ethtool.h>
 #include "dns_util.h"
 
-unsigned short in_cksum(unsigned short *addr, int len) 
+unsigned short in_cksum(const unsigned short *addr, int len) 
 { 
     int sum=0; 
     unsigned short res=0; 
@@ -28,38 +28,24 @@ unsigned short in_cksum(unsigned short *addr, int len)
     return res; 
 }
 
-int is_dns_query(char *buff, int len)
+NM_BOOL is_dns_query(const char *buff, int len)
 {
     struct ethhdr *eh;
     struct iphdr *ip;
     struct udphdr *udp;
-
-    char *ip_buff = buff + 14;
+    char *ip_buff;
 
     eh = (struct ethhdr*)buff;
+    ip_buff = (char *)((char*)eh + sizeof(struct ethhdr));
     ip = (struct iphdr*) (ip_buff);
     udp = (struct udphdr *) (ip_buff + sizeof(struct iphdr));
 
-    if (len < 14 + 20 + 8 + 8) 
-    {
-        return 1;
-    }
+    if (len < PROTO_LEN + 8
+         || eh->h_proto != ntohs(0x0800) 
+         || ip->protocol != IPPROTO_UDP 
+         || udp->dest != ntohs(53)) 
+        return NM_FALSE;
 
-    if (eh->h_proto != ntohs(0x0800))
-    {
-        return 2;
-    }
-
-    if (ip->protocol != IPPROTO_UDP )
-    {
-        return 3;
-    }
-
-    if (udp->dest != ntohs(53))
-    {
-        return 4;
-    }
-
-    return 0;
+    return NM_TRUE;
 }
 

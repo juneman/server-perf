@@ -3,7 +3,7 @@ all: bldenv clean install
 CC=gcc
 NM_LIB=libnmio.so
 
-CFLAGS += -Wall -Werror 
+CFLAGS += -g -Wall -Werror 
 CFLAGS += -fPIC
 nm_util.o: nm_util.h
 nm_lock.o: nm_lock.h
