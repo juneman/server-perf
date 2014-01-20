@@ -3,7 +3,7 @@
 # author: db
 #
 
-PROGS	=	echo echo_threads echo_sq
+PROGS	=	echo echo_threads echo_threads2
 
 NM_LIB_PATH=../
 NM_LIB=nmio
@@ -25,7 +25,7 @@ echo: echo.o
 echo_threads: echo_threads.o 
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-echo_sq: echo_sq.o 
+echo_threads2: echo_threads2.o 
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 echo.o: $(NM_INC) 

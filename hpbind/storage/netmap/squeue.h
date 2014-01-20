@@ -48,6 +48,6 @@ inline int squeue_signal(squeue_t *sq);
 inline int squeue_wait(squeue_t *sq);
 
 inline int squeue_empty(squeue_t *sq);
-inline int squeue_clear(squeue_t *sq);
+inline int squeue_cleanup(squeue_t *sq);
 
 #endif

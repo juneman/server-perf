@@ -41,7 +41,8 @@ typedef struct ___nm_cond_t__
     pthread_cond_t cond;
 }nm_cond_t;
 
-static nm_cond_t g_conds;
+#define TEST_MAX_FDS 512
+static nm_cond_t g_conds[TEST_MAX_FDS];
 
 static pthread_t pids[WORKER_NUM];
 
@@ -60,16 +61,17 @@ static void set_dns_response(char *buff)
 
 static void signal_worker(int fd)
 {
-    nm_cond_t *c = &g_conds;
+    nm_cond_t *c = &g_conds[fd];
 
     pthread_mutex_lock(&(c->lock));
-    pthread_cond_broadcast(&(c->cond));
+    //pthread_cond_broadcast(&(c->cond));
+    pthread_cond_signal(&(c->cond));
     pthread_mutex_unlock(&(c->lock));
 }
 
 static void wait_worker(int fd)
 {
-    nm_cond_t *c = &g_conds;
+    nm_cond_t *c = &g_conds[fd];
 
     pthread_mutex_lock(&(c->lock));
     pthread_cond_wait(&(c->cond), &(c->lock));
@@ -199,13 +201,14 @@ int main(int argc, char **argv)
     
     for (i = 0; i < WORKER_NUM; i++)
     {
-        g_fds[i] = netmap_openfd("eth1"); 
+        int nmfd  = netmap_openfd("eth1"); 
+        g_fds[i] = nmfd;
+
         D("open fd:%d", g_fds[i]);
+
+        pthread_mutex_init(&(g_conds[nmfd].lock), NULL);
+        pthread_cond_init(&(g_conds[nmfd].cond), NULL);
     }
-
-    pthread_mutex_init(&(g_conds.lock), NULL);
-    pthread_cond_init(&(g_conds.cond), NULL);
-
 
     for (i = 0; i < WORKER_NUM; i++)
     {

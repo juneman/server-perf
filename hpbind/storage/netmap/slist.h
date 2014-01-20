@@ -22,7 +22,25 @@ typedef struct __slist_node_t__
 #define slist_init(head) do {(head)->prev = (head)->next = (head);}while(0)
 
 #define slist_entry(node, type, member) \
-            (type *)( ((char *)node) - (char*)(&((type *)0)->member))
+            ((type *)((char *)(node) - (unsigned long)(&((type *)0)->member)))
+
+#define slist_foreach(pos, head) \
+    for(pos = (head)->next; pos != (head); pos = pos->next)
+
+#define slist_foreach_entry(pos, head, type, member) \
+    for (pos = slist_entry((head)->next, type, member); \
+            &(pos->member) != (head); \
+                pos = slist_entry((pos)->member.next, type, member))
+
+#define slist_foreach_safe(pos, n, head) \
+    for (pos = (head)->next, n = pos->next; pos != (head); pos =n ; n = pos->next)
+
+#define slist_foreach_entry_safe(pos, n, head, type, member) \
+    for (pos = slist_entry((head)->next, type, member), \
+        n = slist_entry(pos->member.next, type, member); \
+            &(pos->member) != (head); \
+              pos = n, n = slist_entry((n)->member.next, type, member))
+
 
 inline int slist_add(slist_node_t *list, slist_node_t *node);
 inline int slist_add_tail(slist_node_t *list, slist_node_t *node);

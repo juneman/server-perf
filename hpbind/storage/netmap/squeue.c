@@ -27,7 +27,6 @@ inline int squeue_init(squeue_t *sq)
    slock_init(&(sq->lock));
    slist_init(&(sq->queue));
    scond_init(&(sq->cond));
-
    return 0;
 }
 
@@ -46,6 +45,7 @@ inline int squeue_prealloc(squeue_t *sq, int capcity)
         assert(msg != NULL);
         if (NULL == msg) 
         {
+            squeue_cleanup(sq);
             printf("malloc failed.\n");
             exit(1);
         }
@@ -53,7 +53,7 @@ inline int squeue_prealloc(squeue_t *sq, int capcity)
         sqmsg_init(msg);
         slist_add(list, &(msg->node));
     }
-
+    
     return 0;
 }
 
@@ -103,9 +103,20 @@ inline int squeue_wait(squeue_t *sq)
     return scond_wait(&(sq->cond));
 }
 
-inline int squeue_clear(squeue_t *sq)
+inline int squeue_cleanup(squeue_t *sq)
 {
-    // TODO: 
+    sqmsg_t *msg = NULL;
+    sqmsg_t *temp = NULL;
+    
+    slock_lock(&(sq->lock));
+    slist_foreach_entry_safe(msg, temp, &(sq->queue), sqmsg_t, node)
+    {
+        slist_delete(&(msg->node));
+        free(msg);
+    }
+    assert(squeue_empty(sq));
+    slock_unlock(&(sq->lock));
+
     return 0;
 }
 

@@ -77,13 +77,19 @@ void *watcher(void *arg)
 
         nfd = epoll_wait(efd, events, MAX_EVENTS, -1);
         if (nfd < 0) continue;
+
+        sig_nums ++; 
+
+        int index = 0;
+        for (index = 0; index < nfd; index ++)
         {
-            int recv_bytes = netmap_recv(fds[0], buff, RECV_BUFF_LEN, &addr);
+            int wfd = events[index].data.fd;
+            int recv_bytes = netmap_recv(wfd, buff, RECV_BUFF_LEN, &addr);
             if (recv_bytes <= 0) continue;
 
             watcher_recv_nums ++;
             set_dns_response(buff);
-            netmap_send(fds[0], buff, recv_bytes, &addr);
+            netmap_send(wfd, buff, recv_bytes, &addr);
             watcher_send_nums ++; 
         }
     }
