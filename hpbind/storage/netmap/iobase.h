@@ -15,7 +15,7 @@
 #include "build.h"
 #include "squeue.h"
 
-#define NM_PKT_BUFF_SIZE_MAX (SQMSG_SIZE_MAX)
+#define NM_PKT_BUFF_SIZE_MAX (SDATA_SIZE_MAX)
 typedef struct __netmap_address_t__ {
     unsigned char local_macaddr[6];
     unsigned char remote_macaddr[6];

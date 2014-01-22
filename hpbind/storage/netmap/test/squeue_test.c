@@ -7,10 +7,10 @@
 int testcase_1()
 {
     squeue_t queue;
-    sqmsg_t msg;
+    sdata_t msg;
 
     squeue_init(&queue);
-    sqmsg_init(&msg);
+    sdata_init(&msg);
     
     msg.buff[0] = 'a';
     msg.len = 1;
@@ -18,7 +18,7 @@ int testcase_1()
     int e = squeue_empty(&queue);
     EXPECT_T(e);
     
-    sqmsg_t *tm = squeue_pop(&queue);
+    sdata_t *tm = squeue_pop(&queue);
     EXPECT_T(tm == NULL);
 
     squeue_push(&queue, &msg);

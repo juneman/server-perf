@@ -11,7 +11,7 @@ NM_INC=../iobase.h
 
 CC=gcc
 CLEANFILES=$(PROGS) *.o
-CFLAGS= -g 
+#CFLAGS= -g 
 CFLAGS += -Werror -Wall
 CFLAGS += -I ../ 
 

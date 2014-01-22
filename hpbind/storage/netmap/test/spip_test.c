@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/epoll.h>
 
@@ -45,7 +46,8 @@ void *run(void*args)
         nfd = epoll_wait(efd, events, MAX_EVENTS, -1);
         if (nfd < 0) continue;
         {
-            int buf[2];
+            printf("epoll ...\n");
+          /*  int buf[2];
             int cc = read(fd, buf, sizeof(buf));
             if (cc < 0)
             {
@@ -54,6 +56,7 @@ void *run(void*args)
             }
             
             printf("fd:%d, %d-%d\n", fd, buf[0], buf[1]);
+            */
         }
     }
 }
@@ -68,6 +71,12 @@ int main(int argc, char *argv[])
         return 0;
     }
     
+    int flags = fcntl(fds[0], F_GETFL, 0); 
+    fcntl(fds[0], F_SETFL, flags | O_NONBLOCK);
+
+    flags = fcntl(fds[1], F_GETFL, 0); 
+    fcntl(fds[1], F_SETFL, flags | O_NONBLOCK);
+
     int i = 0;
     for (i = 0; i < WORKER_NUMS; i++)
     {
@@ -84,11 +93,12 @@ int main(int argc, char *argv[])
     {
         buf[0] = i;
         buf[1] = j;
-        write(fds[1], buf, sizeof(buf));
-        
+        //write(fds[1], buf, sizeof(buf));
+        write(fds[1], buf, 0);
+        printf("write...\n"); 
         i+=1;
         j+=2;
-//        sleep(1);
+        sleep(1);
     }
 
     return 0;

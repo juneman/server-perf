@@ -107,14 +107,18 @@ main(int argc, char **argv)
   
     for (i = 0; i < WORKER_NUM; i++)
     {
-        fds[i] = netmap_openfd("eth1"); 
-        D("open fd:%d", fds[i]);
+        fds[i] = netmap_openfd(argv[1]); 
+        D("open fd:%d, on:%s", fds[i], argv[1]);
     }
-   
+    
     netmap_setup();
 
     watcher(NULL);
     
+    netmap_teardown();
+    
+    sleep(1);
+
     for (i = 0; i < WORKER_NUM; i++)
        	netmap_closefd(fds[i]);
     

@@ -12,13 +12,6 @@
 #include <string.h>
 #include "squeue.h"
 
-inline int sqmsg_init(sqmsg_t *msg)
-{
-    memset(msg, 0x0, sizeof(sqmsg_t));
-    slist_init(&(msg->node));
-
-    return 0;
-}
 
 inline int squeue_init(squeue_t *sq)
 {
@@ -41,17 +34,17 @@ inline int squeue_prealloc(squeue_t *sq, int capcity)
 
     for (index = 0; index < capcity; index ++)
     {
-        sqmsg_t *msg = (sqmsg_t *) malloc(sizeof(sqmsg_t));
-        assert(msg != NULL);
-        if (NULL == msg) 
+        sdata_t *data = (sdata_t *) malloc(sizeof(sdata_t));
+        assert(data != NULL);
+        if (NULL == data) 
         {
             squeue_cleanup(sq);
             printf("malloc failed.\n");
             exit(1);
         }
         
-        sqmsg_init(msg);
-        slist_add(list, &(msg->node));
+        sdata_init(data);
+        slist_add(list, &(data->node));
     }
     
     return 0;
@@ -62,35 +55,35 @@ inline int squeue_empty(squeue_t *sq)
     return slist_empty(&(sq->queue));
 }
 
-inline sqmsg_t * squeue_pop(squeue_t *sq)
+inline sdata_t * squeue_pop(squeue_t *sq)
 {
     assert(sq != NULL);
-    sqmsg_t *msg = NULL;
+    sdata_t *data = NULL;
 
     slock_lock(&(sq->lock));
 
     if (slist_empty(&(sq->queue))) goto END_L;
     
     slist_node_t *node = sq->queue.next;
-    msg = slist_entry(node, sqmsg_t, node);
+    data = slist_entry(node, sdata_t, node);
     slist_delete(node);
     
 END_L: 
     slock_unlock(&(sq->lock));
 
-    return msg;
+    return data;
 }
 
-inline int squeue_push(squeue_t *sq, sqmsg_t *msg)
+inline int squeue_push(squeue_t *sq, sdata_t *data)
 {
     assert(sq != NULL);
-    assert(msg != NULL);
+    assert(data != NULL);
     
     int empty = 0;
 
     slock_lock(&(sq->lock));
     empty = slist_empty(&(sq->queue));
-    slist_add_tail(&(sq->queue), &(msg->node));
+    slist_add_tail(&(sq->queue), &(data->node));
     slock_unlock(&(sq->lock));
     
     if (empty) scond_broadcast(&(sq->cond));
@@ -105,14 +98,14 @@ inline int squeue_wait(squeue_t *sq)
 
 inline int squeue_cleanup(squeue_t *sq)
 {
-    sqmsg_t *msg = NULL;
-    sqmsg_t *temp = NULL;
+    sdata_t *data = NULL;
+    sdata_t *temp = NULL;
     
     slock_lock(&(sq->lock));
-    slist_foreach_entry_safe(msg, temp, &(sq->queue), sqmsg_t, node)
+    slist_foreach_entry_safe(data, temp, &(sq->queue), sdata_t, node)
     {
-        slist_delete(&(msg->node));
-        free(msg);
+        slist_delete(&(data->node));
+        free(data);
     }
     assert(squeue_empty(sq));
     slock_unlock(&(sq->lock));

@@ -163,7 +163,7 @@ void *run(void *arg)
                 set_dns_response(buff);
                 netmap_send(fd, buff, recv_bytes, &addr);
                 send_nums[index] ++; 
-            }while(0);
+            }while(1);
         }
     }
 
@@ -199,8 +199,8 @@ int main(int argc, char **argv)
     
     for (i = 0; i < WORKER_NUM; i++)
     {
-        g_fds[i] = netmap_openfd("eth1"); 
-        D("open fd:%d", g_fds[i]);
+        g_fds[i] = netmap_openfd(argv[1]); 
+        D("open fd:%d on:%s", g_fds[i], argv[1]);
     }
 
     pthread_mutex_init(&(g_conds.lock), NULL);
