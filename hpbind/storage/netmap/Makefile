@@ -3,7 +3,7 @@ all: bldenv clean install
 CC=gcc
 NM_LIB=libnmio.so
 
-#CFLAGS += -g -Wall -Werror 
+CFLAGS += -g -Wall -Werror 
 CFLAGS += -fPIC
 nm_util.o: nm_util.h
 slist.o: slist.h
@@ -12,17 +12,22 @@ cbuff.o: cbuff.h
 lfqueue.o: lfqueue.h
 squeue.o: squeue.h
 dns_util.o: dns_util.h
-OBJS = nm_util.o dns_util.o slist.o squeue.o sdata.o cbuff.o lfqueue.o
+LIBOBJS = nm_util.o dns_util.o slist.o squeue.o sdata.o cbuff.o lfqueue.o
 
-iobase.o: $(OBJS)
+OBJS = iobase.o iobase-cb-p.o $(LIBOBJS)
+
+iobase.o: $(LIBOBJS)
+iobase-cb-p.o: $(LIBOBJS)
+iobase-sq-p.o: $(LIBOBJS)
+
 
 bldenv:
 	echo "#define __BUILD_TIME \"`date`\"" > build.h
 
-$(NM_LIB):	iobase.o $(OBJS) 
+$(NM_LIB):	iobase-sq-p.o $(LIBOBJS) 
 	gcc $(CFLAGS)  -shared -o $@ $^
 
-install: $(NM_LIB)
+install: $(OBJS) $(NM_LIB)
 
 clean:
 	rm -f *.o $(NM_LIB)

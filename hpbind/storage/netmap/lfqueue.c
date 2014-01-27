@@ -56,12 +56,13 @@ inline int lfqueue_dequeue(lfqueue_t *q,
     volatile int cur_head = q->head;
     char *cur_head_flag = q->__flags__ + cur_head;
 
-    register long long times = 10;
+    register int times = 10000;
+    //register int times = 10;
     while(! __sync_bool_compare_and_swap(cur_head_flag, LFQ_SLOT_WDONE, LFQ_SLOT_READING)) 
     {
         cur_head = q->head;
         cur_head_flag = q->__flags__ + cur_head;
-        if (times <= 1) return (-1);
+        if (times < 0) return (-1);
         times --;
         sleep(0);
     }
@@ -97,14 +98,13 @@ inline int lfqueue_enqueue(lfqueue_t *q,
     volatile int cur_tail = q->tail;
     char *cur_tail_flag = q->__flags__ + cur_tail;
     
-    register long long times = 1000;
+    register int times = 10000000;
     // wait busy
-    while (!__sync_bool_compare_and_swap(cur_tail_flag, 
-                LFQ_SLOT_IDLE, LFQ_SLOT_WRITING))
+    while (!__sync_bool_compare_and_swap(cur_tail_flag, LFQ_SLOT_IDLE, LFQ_SLOT_WRITING))
     {
         cur_tail = q->tail;
         cur_tail_flag = q->__flags__ + cur_tail;
-        if (times <= 1) return (-1);
+        if (times < 0) return (-1);
         times --;
         sleep(0);
     }

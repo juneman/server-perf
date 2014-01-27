@@ -96,7 +96,9 @@ OBJS =		builtin.@O@ client.@O@ config.@O@ control.@O@ \
 		lwdgnba.@O@ lwdgrbn.@O@ lwdnoop.@O@ lwsearch.@O@ \
 		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS} \
 		${top_srcdir}/netmap/nm_util.@O@ \
-		${top_srcdir}/netmap/nm_lock.@O@ \
+		${top_srcdir}/netmap/lfqueue.@O@ \
+		${top_srcdir}/netmap/slist.@O@ \
+		${top_srcdir}/netmap/sdata.@O@ \
 		${top_srcdir}/netmap/dns_util.@O@ \
 		${top_srcdir}/netmap/iobase.@O@
 

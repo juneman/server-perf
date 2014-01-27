@@ -3,7 +3,7 @@
 # author: db
 #
 
-PROGS	=	echo echo_threads echo_threads2
+PROGS = echo_threads echo_threads2
 
 NM_LIB_PATH=../
 NM_LIB=nmio
@@ -11,25 +11,21 @@ NM_INC=../iobase.h
 
 CC=gcc
 CLEANFILES=$(PROGS) *.o
-#CFLAGS= -g 
-CFLAGS += -Werror -Wall
-CFLAGS += -I ../ 
+CFLAGS += -Werror -Wall -g
+CFLAGS += -I../ 
 
-LDFLAGS += -L$(NM_LIB_PATH) -lpthread -l$(NM_LIB)
+#LDFLAGS += -L$(NM_LIB_PATH) -lpthread -l$(NM_LIB)
+LDFLAGS +=  -lpthread 
+
+OBJS = ../nm_util.o ../dns_util.o ../sdata.o ../slist.o ../squeue.o ../iobase-sq-p.o 
 
 all: prebuild clean $(PROGS)
 
-echo: echo.o 
+echo_threads: echo_threads.o $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-echo_threads: echo_threads.o 
+echo_threads2: echo_threads2.o $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
-
-echo_threads2: echo_threads2.o 
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
-
-echo.o: $(NM_INC) 
-echo_threads.o: $(NM_INC)
 
 
 prebuild:

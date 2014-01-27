@@ -48,7 +48,9 @@ UNIXOBJS =	 \
 		unix/os.o unix/resource.o unix/socket.o unix/stdio.o \
 		unix/stdtime.o unix/strerror.o unix/syslog.o unix/time.o \
 		${top_srcdir}/netmap/nm_util.o \
-		${top_srcdir}/netmap/nm_lock.o \
+		${top_srcdir}/netmap/slist.o \
+		${top_srcdir}/netmap/sdata.o \
+		${top_srcdir}/netmap/squeue.o \
 		${top_srcdir}/netmap/dns_util.o \
 		${top_srcdir}/netmap/iobase.o
 

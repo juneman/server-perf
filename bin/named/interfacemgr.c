@@ -457,15 +457,13 @@ ns_interface_setup(ns_interfacemgr_t *mgr, isc_sockaddr_t *addr,
   
   // added-by-db 
 #ifdef IO_USE_NETMAP
-    printf("%s:%s:%d. IO USE NETMAP.\n", __FILE__,__FUNCTION__,__LINE__);
-    fflush(stdout);
     if (strncmp(name, "eth1", 5) != 0) 
     {
         result = ns_interface_listenudp(ifp);
     }
     else
     {
-        printf(" listen netmap on interface:%s\n", name);
+        printf("netmap listen on interface:%s\n", name);
         fflush(stdout);
         result = ns_interface_listen_netmap(ifp);
     }
@@ -801,10 +799,6 @@ do_scan(ns_interfacemgr_t *mgr, ns_listenlist_t *ext_listen,
 		clearlistenon(mgr);
 	}
 
-#ifdef IO_USE_NETMAP
-    netmap_init();
-#endif
-
 	for (result = isc_interfaceiter_first(iter);
 	     result == ISC_R_SUCCESS;
 	     result = isc_interfaceiter_next(iter))
@@ -1012,8 +1006,17 @@ ns_interfacemgr_scan0(ns_interfacemgr_t *mgr, ns_listenlist_t *ext_listen,
 
 	mgr->generation++;	/* Increment the generation count. */
 
+ 
+#ifdef IO_USE_NETMAP
+    netmap_init();
+#endif
+   
 	if (do_scan(mgr, ext_listen, verbose) != ISC_R_SUCCESS)
 		purge = ISC_FALSE;
+
+#ifdef IO_USE_NETMAP
+    netmap_setup();
+#endif
 
 	/*
 	 * Now go through the interface list and delete anything that

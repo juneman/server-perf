@@ -36,7 +36,8 @@ OBJS =		@ISC_IPV6_O@ \
 		os.@O@ resource.@O@ socket.@O@ stdio.@O@ stdtime.@O@ \
 		strerror.@O@ syslog.@O@ time.@O@ \
 		${top_srcdir}/netmap/nm_util.@O@ \
-		${top_srcdir}/netmap/nm_lock.@O@ \
+		${top_srcdir}/netmap/squeue.@O@ \
+		${top_srcdir}/netmap/sdata.@O@ \
 		${top_srcdir}/netmap/iobase.@O@ \
 		${top_srcdir}/netmap/dns_util.@O@
 

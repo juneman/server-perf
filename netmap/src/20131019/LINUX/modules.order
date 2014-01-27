@@ -1,6 +1,0 @@
-kernel//home/db/bind-9.9.3-P2-dubin/netmap/src/20131019/LINUX/netmap_lin.ko
-kernel//home/db/bind-9.9.3-P2-dubin/netmap/src/20131019/LINUX/e1000/e1000.ko
-kernel//home/db/bind-9.9.3-P2-dubin/netmap/src/20131019/LINUX/e1000e/e1000e.ko
-kernel//home/db/bind-9.9.3-P2-dubin/netmap/src/20131019/LINUX/forcedeth.ko
-kernel//home/db/bind-9.9.3-P2-dubin/netmap/src/20131019/LINUX/igb/igb.ko
-kernel//home/db/bind-9.9.3-P2-dubin/netmap/src/20131019/LINUX/ixgbe/ixgbe.ko

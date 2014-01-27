@@ -10,22 +10,36 @@
 #include <linux/ethtool.h>
 #include "dns_util.h"
 
-unsigned short in_cksum(const unsigned short *addr, int len) 
-{ 
-    int sum=0; 
-    unsigned short res=0; 
-    while( len > 1)  { 
-        sum += *addr++; 
-        len -=2; 
-    } 
-    if( len == 1) { 
-        *((unsigned char *)(&res))=*((unsigned char *)addr); 
-        sum += res; 
-    } 
-    sum = (sum >>16) + (sum & 0xffff); 
-    sum += (sum >>16) ; 
-    res = ~sum; 
-    return res; 
+/* Magic: taken from sbin/dhclient/packet.c */
+/* Compute the checksum of the given ip header. */
+unsigned short checksum(const void *data, unsigned short len, unsigned int sum)
+{
+    const unsigned char *addr = data;
+    unsigned int i;
+
+    /* Checksum all the pairs of bytes first... */
+    for (i = 0; i < (len & ~1U); i += 2) {
+        sum += (u_int16_t)ntohs(*((u_int16_t *)(addr + i)));
+        if (sum > 0xFFFF)
+            sum -= 0xFFFF;
+    }
+    /*
+     *   * If there's a single byte left over, checksum it, too.
+     *       * Network byte order is big-endian, so the remaining byte is
+     *           * the high byte.
+     *               */
+    if (i < len) {
+        sum += addr[i] << 8;
+        if (sum > 0xFFFF)
+            sum -= 0xFFFF;
+    }
+    return sum;
+}
+
+unsigned short wrapsum(unsigned int sum)
+{
+    sum = ~sum & 0xFFFF;
+    return (htons(sum));
 }
 
 NM_BOOL is_dns_query(const char *buff, int len)

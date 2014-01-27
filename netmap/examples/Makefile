@@ -3,31 +3,33 @@
 # author: db
 #
 
-TESTSUIT = squeue_test slist_test spip_test
+PROGS	=	echo echo_threads echo_threads2
 
 NM_LIB_PATH=../
 NM_LIB=nmio
 NM_INC=../iobase.h
 
-CLEANFILES=$(TESTSUIT) *.o
+CC=gcc
+CLEANFILES=$(PROGS) *.o
 CFLAGS= -g 
 CFLAGS += -Werror -Wall
 CFLAGS += -I ../ 
 
 LDFLAGS += -L$(NM_LIB_PATH) -lpthread -l$(NM_LIB)
 
-all: prebuild clean $(TESTSUIT)  
+all: prebuild clean $(PROGS)
 
-# testcase
-squeue_test: squeue_test.o test.o 
+echo: echo.o 
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-slist_test: slist_test.o test.o 
+echo_threads: echo_threads.o 
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-spip_test: spip_test.o
+echo_threads2: echo_threads2.o 
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
+echo.o: $(NM_INC) 
+echo_threads.o: $(NM_INC)
 
 
 prebuild:

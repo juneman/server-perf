@@ -147,4 +147,3 @@ int netmap_close(struct my_ring *me)
     return NM_R_SUCCESS;
 }
 
-

@@ -3359,14 +3359,7 @@ dispatch_recv(isc__socket_t *sock) {
 	if (sock->type != isc_sockettype_fdwatch) {
 		ev = ISC_LIST_HEAD(sock->recv_list);
 		if (ev == NULL)
-	    {// added by db for test
-            D("recv list empty");
-            return;
-        }
-        else
-        {
-           
-        }
+			return;
 		socket_log(sock, NULL, EVENT, NULL, 0, 0,
 			   "dispatch_recv:  event %p -> task %p",
 			   ev, ev->ev_sender);
@@ -4099,25 +4092,6 @@ process_fds(isc__socketmgr_t *manager, struct kevent *events, int nevents) {
 	return (done);
 }
 #elif defined(USE_EPOLL)
-
-static int lb_getfd(isc__socketmgr_t *manager, int fd)
-{
-    isc__socket_t *sock;
-    int i = 9;
-   /* 
-    do 
-    {
-        sock = manager->fds[i];
-        if (sock->pending_recv == 0)
-        {
-            return i;
-        }
-        i++;
-    }while(i <= 12);
-*/
-    return fd;
-}
-
 static isc_boolean_t
 process_fds(isc__socketmgr_t *manager, struct epoll_event *events, int nevents)
 {
@@ -4153,18 +4127,9 @@ process_fds(isc__socketmgr_t *manager, struct epoll_event *events, int nevents)
 			 */
 			events[i].events |= (EPOLLIN | EPOLLOUT);
 		}
-        
-#if 0
 		process_fd(manager, events[i].data.fd,
 			   (events[i].events & EPOLLIN) != 0,
 			   (events[i].events & EPOLLOUT) != 0);
-#else
-        int nfd = lb_getfd(manager, events[i].data.fd);
-		process_fd(manager, nfd, 
-			   (events[i].events & EPOLLIN) != 0,
-			   (events[i].events & EPOLLOUT) != 0);
-
-#endif
 	}
 
 #ifdef USE_WATCHER_THREAD

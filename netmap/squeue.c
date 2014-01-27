@@ -12,15 +12,24 @@
 #include <string.h>
 #include "squeue.h"
 
-inline int squeue_init(squeue_t *sq, int capcity, int attrs)
-{
-    assert(sq != NULL);
 
+inline int squeue_init(squeue_t *sq)
+{
+   assert(sq != NULL);
+
+   slock_init(&(sq->lock));
+   slist_init(&(sq->queue));
+   scond_init(&(sq->cond));
+   return 0;
+}
+
+inline int squeue_prealloc(squeue_t *sq, int capcity)
+{
     int index = 0;
     
-    slock_init(&(sq->lock));
-    slist_init(&(sq->queue));
-   
+    assert(capcity > 0);
+
+    squeue_init(sq);
     slist_node_t *list = &(sq->queue);
 
     for (index = 0; index < capcity; index ++)
@@ -29,7 +38,7 @@ inline int squeue_init(squeue_t *sq, int capcity, int attrs)
         assert(data != NULL);
         if (NULL == data) 
         {
-            squeue_destroy(sq);
+            squeue_cleanup(sq);
             printf("malloc failed.\n");
             exit(1);
         }
@@ -38,54 +47,29 @@ inline int squeue_init(squeue_t *sq, int capcity, int attrs)
         slist_add(list, &(data->node));
     }
     
-    sq->capcity = capcity;
-    sq->size = 0;
-    sq->attrs = attrs;
-        
     return 0;
 }
 
 inline int squeue_empty(squeue_t *sq)
 {
-    return __sync_bool_compare_and_swap(&(sq->size), 0, 0);
-}
-
-inline int squeue_full(squeue_t *sq)
-{
-    int capcity = sq->capcity;
-    return __sync_bool_compare_and_swap(&(sq->size), capcity, capcity);
+    return slist_empty(&(sq->queue));
 }
 
 inline sdata_t * squeue_pop(squeue_t *sq)
 {
     assert(sq != NULL);
     sdata_t *data = NULL;
-    int needlock = 0;
 
-    if (sq->attrs & SQUEUE_SIG_READ) 
-    {
-        if (__sync_bool_compare_and_swap(&(sq->size), 0, 0)) return NULL;
-    }
-    else
-    {
-        needlock = 1;
-    }
+    slock_lock(&(sq->lock));
 
-    if (needlock)
-    {
-        slock_lock(&(sq->lock));
-        if (slist_empty(&(sq->queue))) goto END_L;
-    }
+    if (slist_empty(&(sq->queue))) goto END_L;
     
     slist_node_t *node = sq->queue.next;
     data = slist_entry(node, sdata_t, node);
     slist_delete(node);
     
-    __sync_fetch_and_sub(&(sq->size), 1);
-
 END_L: 
-
-    if (needlock) slock_unlock(&(sq->lock));
+    slock_unlock(&(sq->lock));
 
     return data;
 }
@@ -95,29 +79,24 @@ inline int squeue_push(squeue_t *sq, sdata_t *data)
     assert(sq != NULL);
     assert(data != NULL);
     
-    int needlock = 0;
+    int empty = 0;
 
-    if (sq->attrs & SQUEUE_SIG_WRITE) 
-    {
-        if (__sync_bool_compare_and_swap(&(sq->size), 0, 0)) 
-            needlock = 1;
-    }
-    else
-    {
-        needlock = 1;
-    }
-    
-    if (needlock) slock_lock(&(sq->lock)); 
-        
+    slock_lock(&(sq->lock));
+    empty = slist_empty(&(sq->queue));
     slist_add_tail(&(sq->queue), &(data->node));
-    __sync_fetch_and_add(&(sq->size), 1);
-
-    if (needlock) slock_unlock(&(sq->lock));
+    slock_unlock(&(sq->lock));
+    
+    if (empty) scond_broadcast(&(sq->cond));
 
     return 0;
 }
 
-inline int squeue_destroy(squeue_t *sq)
+inline int squeue_wait(squeue_t *sq)
+{
+    return scond_wait(&(sq->cond));
+}
+
+inline int squeue_cleanup(squeue_t *sq)
 {
     sdata_t *data = NULL;
     sdata_t *temp = NULL;
