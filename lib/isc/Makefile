@@ -46,13 +46,7 @@ UNIXOBJS =	 \
 		unix/errno2result.o unix/file.o unix/fsaccess.o \
 		unix/interfaceiter.o unix/keyboard.o unix/net.o \
 		unix/os.o unix/resource.o unix/socket.o unix/stdio.o \
-		unix/stdtime.o unix/strerror.o unix/syslog.o unix/time.o \
-		${top_srcdir}/netmap/nm_util.o \
-		${top_srcdir}/netmap/slist.o \
-		${top_srcdir}/netmap/sdata.o \
-		${top_srcdir}/netmap/squeue.o \
-		${top_srcdir}/netmap/dns_util.o \
-		${top_srcdir}/netmap/iobase.o
+		unix/stdtime.o unix/strerror.o unix/syslog.o unix/time.o
 
 NLSOBJS =	nls/msgcat.o
 
@@ -80,6 +74,7 @@ OBJS =		  \
 		serial.o sha1.o sha2.o sockaddr.o stats.o \
 		string.o strtoul.o symtab.o task.o taskpool.o \
 		timer.o version.o ${UNIXOBJS} ${NLSOBJS} ${THREADOBJS}
+
 SYMTBLOBJS =	backtrace-emptytbl.o
 
 # Alphabetically
@@ -486,10 +481,26 @@ version.o: version.c
 
 libisc.a: ${OBJS} ${SYMTBLOBJS}
 	${AR} ${ARFLAGS} $@ ${OBJS} ${SYMTBLOBJS}
+#ifdef IO_USE_NETMAP . added by db.
+	echo OPEN $@ > ar.tmp
+	echo ADDLIB ${top_srcdir}/netmap/libiobase.a >> ar.tmp
+	echo SAVE >> ar.tmp
+	echo END >> ar.tmp
+	$(AR) -M < ar.tmp
+	/bin/rm -f ar.tmp
+#endif
 	${RANLIB} $@
 
 libisc-nosymtbl.a: ${OBJS}
 	${AR} ${ARFLAGS} $@ ${OBJS}
+#ifdef IO_USE_NETMAP . added by db.
+	echo OPEN $@ > ar.tmp
+	echo ADDLIB ${top_srcdir}/netmap/libiobase.a >> ar.tmp
+	echo SAVE >> ar.tmp
+	echo END >> ar.tmp
+	$(AR) -M < ar.tmp
+	/bin/rm -f ar.tmp
+#endif
 	${RANLIB} $@
 
 libisc.la: ${OBJS} ${SYMTBLOBJS}

@@ -10,8 +10,7 @@
 #include "cbuff.h"
 #include "iobase.h"
 
-#define O_NOATIME 01000000
-
+#define NM_LIB "CBUFF-LIB"
 static int verbose = -11;
 
 // for list netmap slot limited. 
@@ -23,8 +22,6 @@ static int g_nm_setuped = 0;
 
 static unsigned short g_ip_id_next = 0x11;
 
-#define NM_QUEUE_CAPCITY (1024)
-#define NM_IFNAME_SIZE (8)
 typedef struct __netmap_ifnode_t__ {
     struct my_ring ring;
     char ifname[NM_IFNAME_SIZE + 1];
@@ -37,8 +34,8 @@ typedef struct __netmap_ifnode_t__ {
     int send_count;
 }netmap_ifnode_t;
 
-#define MAX_FDS (1024)
 typedef struct __netmap_pipeline_t__ {
+    int magic;
     int pipe_infd;
     int pipe_outfd;
     int nmfd;
@@ -49,7 +46,6 @@ typedef struct __netmap_pipeline_t__ {
     cbuff_t send_buff;
 }netmap_pipeline_t;
 
-#define MAX_INTERFACE_NUMS 8
 typedef struct __netmap_io_manager_t__ 
 {
     NM_BOOL stopped;
@@ -121,7 +117,9 @@ static void netmap_init_pipeline(netmap_pipeline_t *line, int capcity)
     assert(line != NULL);
     assert(capcity > 0);
 
+    line->magic = NM_PIPELINE_MAGIC;
     line->pipe_infd = line->pipe_outfd = line->nmfd = -1;
+
     cbuff_init(&(line->recv_buff), capcity);
     cbuff_init(&(line->send_buff), capcity);
     slist_init(&(line->node));
@@ -130,6 +128,7 @@ static void netmap_init_pipeline(netmap_pipeline_t *line, int capcity)
 static void netmap_destroy_pipeline(netmap_pipeline_t *line)
 {
     assert(line != NULL);
+    assert( NM_PIPELINE_VALID(line->magic));
 
     line->pipe_infd = line->pipe_outfd = line->nmfd = -1;
     cbuff_destroy(&(line->recv_buff));
@@ -163,13 +162,16 @@ static void netmap_destroy_ifnode(netmap_ifnode_t *node)
     {
         slist_foreach_entry_safe(line, n, node->pipelines, netmap_pipeline_t, node)
         {
+            assert(NM_PIPELINE_VALID(line->magic));
             slist_delete(&(line->node));
             free(line);
         }
+
+        line = slist_entry(node->pipelines, netmap_pipeline_t, node);
+        assert(NM_PIPELINE_VALID(line->magic));
+        free(line);
     }
     
-    if (NULL != node->pipelines) free(node->pipelines);
-
     node->pipelines = NULL;
     node->next_line = NULL;
 
@@ -358,7 +360,7 @@ int netmap_openfd(const char *ifname)
     node->ring.ifname = node->ifname;
     if (NM_R_SUCCESS != (err = netmap_open(&node->ring, 0, 0)))
         goto END_L;
-    
+
     if ((nmfd = node->ring.fd) >= MAX_FDS)
     {
         err = NM_R_FD_OUTOFBOUND;
@@ -374,6 +376,8 @@ int netmap_openfd(const char *ifname)
      
     g_iomgr.ifnode_map[nmfd] = node;
     watch_fd(g_iomgr.epoll_fd, nmfd);
+
+    D("On %s watch fd:%d", node->ifname, node->ring.fd);
 
 CREATE_PIPE_LINE:    
     if (pipe(pipe_fds) < 0 )
@@ -449,10 +453,11 @@ int netmap_closefd(int fd)
     node->refcount --;
     if (node->refcount <= 0)
     {
-        g_iomgr.ifnode_map[line->nmfd] = NULL;
-        unwatch_fd(g_iomgr.epoll_fd, node->ring.fd);
         netmap_close(&(node->ring));
         close(node->ring.fd);
+
+        unwatch_fd(g_iomgr.epoll_fd, node->ring.fd);
+        g_iomgr.ifnode_map[line->nmfd] = NULL;
         netmap_destroy_ifnode(node);
     }
 
@@ -578,7 +583,7 @@ static int process_recv_ring(struct netmap_ring *rxring,
         cbuff_t *buff, int limit) 
 {
     u_int j, m = 0;
-    int recv_bytes = 0;
+    u_int recv_count = 0;
 
     j = rxring->cur; /* RX */
     if (rxring->avail < limit)
@@ -611,8 +616,7 @@ static int process_recv_ring(struct netmap_ring *rxring,
         parse_addr(rxbuf, rs->len, (netmap_address_t*)data->extbuff);
         cbuff_writeable_next(buff);
         
-        recv_bytes += data->len;
-
+        recv_count ++;
 NEXT_L:	
         j = NETMAP_RING_NEXT(rxring, j);
         m++;
@@ -626,12 +630,12 @@ END:
     rxring->avail -= m;
     rxring->cur = j;
     
-    if (recv_bytes <= 0) 
+    if (recv_count <= 0) 
     {
         return NM_R_FAILED;
     }
 
-    return (recv_bytes);
+    return (recv_count);
 }
 
 static int process_send_ring(struct netmap_ring *txring, 
@@ -808,7 +812,7 @@ int netmap_init(void)
     g_nm_inited = 1;
 
 #ifdef __BUILD_TIME 
-    printf(" BUILD AT: %s\n", __BUILD_TIME);
+    printf(" BUILD AT: %s, USE: %s\n", __BUILD_TIME, NM_LIB);
 #endif
 
     init_io_manager(&g_iomgr);
@@ -819,7 +823,7 @@ int netmap_init(void)
     return NM_R_SUCCESS; 
 }
 
-static int __netmap_signal__(int nmfd);
+static int __netmap_signal__(int nmfd, int times);
 static int __netmap_recvfrom__(int nmfd)
 {
     netmap_pipeline_t *line = NULL;
@@ -829,10 +833,11 @@ static int __netmap_recvfrom__(int nmfd)
     if (NULL == line) return NM_R_FD_OUTOFBOUND;
     node = netmap_ifnode_by_nmfd(&g_iomgr, nmfd);
     if (NULL == node) return NM_R_FD_OUTOFBOUND;
-    
-    if (netmap_recv_from_ring(&(node->ring), &(line->recv_buff), g_limit) > 0)
+    int times = 0;
+
+    if ( ( times = netmap_recv_from_ring(&(node->ring), &(line->recv_buff), g_limit)) > 0)
     { 
-        __netmap_signal__(nmfd);
+        __netmap_signal__(nmfd, times);
         netmap_ifnode_move_to_next(&g_iomgr, nmfd);
     }
     return NM_R_SUCCESS;
@@ -856,19 +861,18 @@ static int __netmap_sendto__(int nmfd)
 static int g_fd_interupt_count[MAX_FDS];
 static int g_fd_signal_count[MAX_FDS];
 
-static int __netmap_signal__(int nmfd)
+static int __netmap_signal__(int nmfd, int times)
 {
     netmap_pipeline_t * line = NULL;
-    static char _null_buff_[1024 * 64];
+    static char _null_buff_[1024 * 64] = {'a'};
 
     line = netmap_ifnode_next_line_by_nmfd(&g_iomgr, nmfd);
     if (NULL != line)
     {
-        char buff[1] = {'a'};
-        if (write(line->pipe_outfd, buff, sizeof(buff)) <= 0)
+        if (write(line->pipe_outfd, _null_buff_, times) <= 0)
         {
             read(line->pipe_infd, _null_buff_, sizeof(_null_buff_));
-            write(line->pipe_outfd, buff, sizeof(buff));
+            write(line->pipe_outfd, _null_buff_, times);
         }
 
         g_fd_signal_count[nmfd] ++;

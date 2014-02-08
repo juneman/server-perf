@@ -34,12 +34,7 @@ OBJS =		 \
 		app.o dir.o entropy.o errno2result.o file.o \
 		fsaccess.o interfaceiter.o keyboard.o net.o \
 		os.o resource.o socket.o stdio.o stdtime.o \
-		strerror.o syslog.o time.o \
-		${top_srcdir}/netmap/nm_util.o \
-		${top_srcdir}/netmap/squeue.o \
-		${top_srcdir}/netmap/sdata.o \
-		${top_srcdir}/netmap/iobase.o \
-		${top_srcdir}/netmap/dns_util.o
+		strerror.o syslog.o time.o 
 
 # Alphabetically
 SRCS =		 \

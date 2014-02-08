@@ -15,6 +15,20 @@
 #include "build.h"
 #include "squeue.h"
 
+#define O_NOATIME 01000000
+/**
+ *
+ */
+#define MAX_FDS (1024)
+#define MAX_INTERFACE_NUMS 8
+
+#define NM_QUEUE_CAPCITY (1024)
+#define NM_IFNAME_SIZE (8)
+
+#define NM_PIPELINE_MAGIC ((int)('a' << 24 | 'b' << 16 | 'c' << 8 | 'd'))
+#define NM_PIPELINE_VALID(m)  ( (m) == NM_PIPELINE_MAGIC ? 1:0 )
+
+
 #define NM_PKT_BUFF_SIZE_MAX (SDATA_SIZE_MAX)
 typedef struct __netmap_address_t__ {
     unsigned char local_macaddr[6];

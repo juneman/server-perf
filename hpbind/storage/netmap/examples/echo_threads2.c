@@ -165,7 +165,7 @@ void *run(void *arg)
                 set_dns_response(buff);
                 netmap_send(fd, buff, recv_bytes, &addr);
                 send_nums[index] ++; 
-            }while(1);
+            }while(0);
         }
     }
 
@@ -229,10 +229,10 @@ int main(int argc, char **argv)
 
     for (i = 0; i < WORKER_NUM; i++)
     {
-    //    netmap_closefd(g_fds[i]);
+        netmap_closefd(g_fds[i]);
     }
     
-    //netmap_destroy();
+    netmap_destroy();
 
     print_stat();
 

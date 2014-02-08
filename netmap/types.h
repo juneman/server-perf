@@ -28,9 +28,10 @@ typedef unsigned char NM_BOOL;
 #define NM_R_FAILED  (-1)
 #define NM_R_ARGS_NULL (-2)
 #define NM_R_BUFF_NOT_ENOUGH (-3)
-#define NM_R_FD_OUTOFBIND (-100)
+#define NM_R_FD_OUTOFBOUND (-100)
 
 #define NM_R_QUEUE_EMPTY (-200)
+#define NM_R_QUEUE_FULL  (-201)
 // end of define return code
 
 #endif

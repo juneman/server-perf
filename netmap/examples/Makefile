@@ -3,33 +3,27 @@
 # author: db
 #
 
-PROGS	=	echo echo_threads echo_threads2
-
-NM_LIB_PATH=../
-NM_LIB=nmio
-NM_INC=../iobase.h
+PROGS =echo echo_threads echo_threads2
 
 CC=gcc
 CLEANFILES=$(PROGS) *.o
-CFLAGS= -g 
-CFLAGS += -Werror -Wall
-CFLAGS += -I ../ 
+CFLAGS += -Werror -Wall -g
+CFLAGS += -I../ 
 
-LDFLAGS += -L$(NM_LIB_PATH) -lpthread -l$(NM_LIB)
+LDFLAGS +=  -lpthread 
+
+OBJS = ../libiobase.a 
 
 all: prebuild clean $(PROGS)
 
-echo: echo.o 
+echo: echo.o $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-echo_threads: echo_threads.o 
+echo_threads: echo_threads.o $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-echo_threads2: echo_threads2.o 
+echo_threads2: echo_threads2.o $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
-
-echo.o: $(NM_INC) 
-echo_threads.o: $(NM_INC)
 
 
 prebuild:

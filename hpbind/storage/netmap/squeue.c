@@ -12,9 +12,12 @@
 #include <string.h>
 #include "squeue.h"
 
-inline int squeue_init(squeue_t *sq, int capcity, int attrs)
+inline int squeue_init(squeue_t *sq, int capcity, int size, int attrs)
 {
     assert(sq != NULL);
+    assert(capcity > 0);
+    assert(size >= 0);
+    assert(capcity >= size);
 
     int index = 0;
     
@@ -23,7 +26,7 @@ inline int squeue_init(squeue_t *sq, int capcity, int attrs)
    
     slist_node_t *list = &(sq->queue);
 
-    for (index = 0; index < capcity; index ++)
+    for (index = 0; index < size; index ++)
     {
         sdata_t *data = (sdata_t *) malloc(sizeof(sdata_t));
         assert(data != NULL);
@@ -39,9 +42,9 @@ inline int squeue_init(squeue_t *sq, int capcity, int attrs)
     }
     
     sq->capcity = capcity;
-    sq->size = 0;
+    sq->size = size;
     sq->attrs = attrs;
-        
+    sq->unactived = 0;    
     return 0;
 }
 
@@ -61,6 +64,9 @@ inline sdata_t * squeue_pop(squeue_t *sq)
     assert(sq != NULL);
     sdata_t *data = NULL;
     int needlock = 0;
+    
+    if (sq->unactived == 1)
+        return NULL;
 
     if (sq->attrs & SQUEUE_SIG_READ) 
     {
@@ -69,7 +75,7 @@ inline sdata_t * squeue_pop(squeue_t *sq)
     else
     {
         needlock = 1;
-    }
+    } 
 
     if (needlock)
     {
@@ -97,6 +103,9 @@ inline int squeue_push(squeue_t *sq, sdata_t *data)
     
     int needlock = 0;
 
+    if (sq->unactived == 1)
+        return 0;
+
     if (sq->attrs & SQUEUE_SIG_WRITE) 
     {
         if (__sync_bool_compare_and_swap(&(sq->size), 0, 0)) 
@@ -123,12 +132,22 @@ inline int squeue_destroy(squeue_t *sq)
     sdata_t *temp = NULL;
     
     slock_lock(&(sq->lock));
+
+    if (sq->unactived == 1)
+        goto END; 
+
+    sq->unactived = 1;
+     
     slist_foreach_entry_safe(data, temp, &(sq->queue), sdata_t, node)
     {
         slist_delete(&(data->node));
         free(data);
+        __sync_fetch_and_sub(&(sq->size), 1);
     }
+
     assert(squeue_empty(sq));
+     
+END:
     slock_unlock(&(sq->lock));
 
     return 0;

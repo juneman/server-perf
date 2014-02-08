@@ -141,13 +141,7 @@ OBJS =		builtin.o client.o config.o control.o \
 		zoneconf.o \
 		lwaddr.o lwresd.o lwdclient.o lwderror.o lwdgabn.o \
 		lwdgnba.o lwdgrbn.o lwdnoop.o lwsearch.o \
-		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS} \
-		${top_srcdir}/netmap/nm_util.o \
-		${top_srcdir}/netmap/squeue.o \
-		${top_srcdir}/netmap/slist.o \
-		${top_srcdir}/netmap/sdata.o \
-		${top_srcdir}/netmap/dns_util.o \
-		${top_srcdir}/netmap/iobase.o
+		${DLZDRIVER_OBJS} ${DBDRIVER_OBJS} 
 
 UOBJS =		unix/os.o unix/dlz_dlopen_driver.o
 

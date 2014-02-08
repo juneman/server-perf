@@ -1,7 +1,12 @@
 all: bldenv clean install
 
 CC=gcc
-NM_LIB=libnmio.so
+AR=ar cvr
+RANLIB=ranlib
+TOUCH=touch
+
+
+IOLIB= LFQ
 
 CFLAGS += -g -Wall -Werror 
 CFLAGS += -fPIC
@@ -12,24 +17,42 @@ cbuff.o: cbuff.h
 lfqueue.o: lfqueue.h
 squeue.o: squeue.h
 dns_util.o: dns_util.h
-LIBOBJS = nm_util.o dns_util.o slist.o squeue.o sdata.o cbuff.o lfqueue.o
+LIBOBJS = nm_util.o dns_util.o slist.o sdata.o 
 
-OBJS = iobase.o iobase-cb-p.o $(LIBOBJS)
 
-iobase.o: $(LIBOBJS)
 iobase-cb-p.o: $(LIBOBJS)
 iobase-sq-p.o: $(LIBOBJS)
+iobase-lfq-pn.o: $(LIBOBJS)
 
+ifeq ($(IOLIB), SQ)
+TARGET_SRC = iobase-sq-p.o	
+LIBOBJS += squeue.o 
+else
+ifeq ($(IOLIB), LFQ)
+TARGET_SRC = iobase-lfq-pn.o	
+LIBOBJS += lfqueue.o
+else
+TARGET_SRC = iobase-cb-p.o	
+LIBOBJS += cbuff.o
+endif
+endif
+
+OBJS = $(TARGET_SRC) $(LIBOBJS)
+
+TARGET_LIB = libiobase.a
+
+$(TARGET_LIB) : $(OBJS)
+	$(AR) $@ $^
+	$(RANLIB) $@
+	$(TOUCH) timestamp
 
 bldenv:
 	echo "#define __BUILD_TIME \"`date`\"" > build.h
+	echo "Link iolib: $(IOLIB)"
 
-$(NM_LIB):	iobase-sq-p.o $(LIBOBJS) 
-	gcc $(CFLAGS)  -shared -o $@ $^
-
-install: $(OBJS) $(NM_LIB)
+install: $(TARGET_LIB)  $(OBJS)
 
 clean:
-	rm -f *.o $(NM_LIB)
+	rm -f *.o $(TARGET_LIB)
 	make clean -C test/
 	make clean -C examples/

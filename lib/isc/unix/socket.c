@@ -1095,9 +1095,10 @@ wakeup_socket(isc__socketmgr_t *manager, int fd, int msg) {
 		manager->fdstate[fd] = CLOSED;
 		(void)unwatch_fd(manager, fd, SELECT_POKE_READ);
 		(void)unwatch_fd(manager, fd, SELECT_POKE_WRITE);
-		(void)close(fd);
 #ifdef IO_USE_NETMAP  
         (void)netmap_closefd(fd);
+#else
+		(void)close(fd);
 #endif
 		return;
 	}
@@ -1769,7 +1770,6 @@ dump_msg(struct msghdr *msg) {
 static int
 doio_netmap_recv(isc__socket_t *sock, isc_socketevent_t *dev) {
 	int cc;
-	isc_buffer_t *buffer;
     netmap_address_t addr;
 
     cc = netmap_recv(sock->fd, (char*)(dev->region.base + dev->n), 

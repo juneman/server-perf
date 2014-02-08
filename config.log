@@ -545,7 +545,7 @@ configure:13203: $? = 0
 configure:13210: result: yes
 configure:13218: checking for sysctlbyname
 configure:13218: gcc -o conftest -g -O2  -D_GNU_SOURCE  conftest.c  >&5
-/tmp/cccoN5MO.o: In function `main':
+/tmp/ccMda2DE.o: In function `main':
 /home/db/bind-9.9.3-P2-dubin/conftest.c:63: undefined reference to `sysctlbyname'
 collect2: ld returned 1 exit status
 configure:13218: $? = 1
@@ -1017,7 +1017,7 @@ configure: failed program was:
 configure:13522: result: no
 configure:13559: checking for kqueue
 configure:13559: gcc -o conftest -g -O2  -D_GNU_SOURCE  conftest.c  >&5
-/tmp/ccEnAPVf.o: In function `main':
+/tmp/ccBUG8f8.o: In function `main':
 /home/db/bind-9.9.3-P2-dubin/conftest.c:70: undefined reference to `kqueue'
 collect2: ld returned 1 exit status
 configure:13559: $? = 1
@@ -1956,7 +1956,7 @@ configure:14768: checking for /dev/random
 configure:14782: result: yes
 configure:14813: checking for arc4random
 configure:14813: gcc -o conftest -g -O2  -D_GNU_SOURCE  conftest.c  >&5
-/tmp/cciWX0Pi.o: In function `main':
+/tmp/ccDLNZPd.o: In function `main':
 /home/db/bind-9.9.3-P2-dubin/conftest.c:80: undefined reference to `arc4random'
 collect2: ld returned 1 exit status
 configure:14813: $? = 1
@@ -2908,7 +2908,7 @@ configure: failed program was:
 configure:17305: result: not match any subspecies; assume standard definition
 configure:17312: checking for getipnodebyname
 configure:17312: gcc -o conftest -g -O2 -I/usr/include/libxml2  -D_GNU_SOURCE  conftest.c -lpthread  -lxml2 -lz -lm >&5
-/tmp/ccuIMZFn.o: In function `main':
+/tmp/ccfSHloj.o: In function `main':
 /home/db/bind-9.9.3-P2-dubin/conftest.c:96: undefined reference to `getipnodebyname'
 collect2: ld returned 1 exit status
 configure:17312: $? = 1
@@ -3046,7 +3046,7 @@ configure:17458: $? = 0
 configure:17458: result: yes
 configure:17473: checking for strlcpy
 configure:17473: gcc -o conftest -g -O2 -I/usr/include/libxml2  -D_GNU_SOURCE  conftest.c -lpthread  -lxml2 -lz -lm >&5
-/tmp/ccnCo6CR.o: In function `main':
+/tmp/ccv2k22L.o: In function `main':
 /home/db/bind-9.9.3-P2-dubin/conftest.c:99: undefined reference to `strlcpy'
 collect2: ld returned 1 exit status
 configure:17473: $? = 1
@@ -3156,7 +3156,7 @@ configure: failed program was:
 configure:17473: result: no
 configure:17482: checking for strlcat
 configure:17482: gcc -o conftest -g -O2 -I/usr/include/libxml2  -D_GNU_SOURCE  conftest.c -lpthread  -lxml2 -lz -lm >&5
-/tmp/ccgiBRsT.o: In function `main':
+/tmp/ccbWFx6R.o: In function `main':
 /home/db/bind-9.9.3-P2-dubin/conftest.c:99: undefined reference to `strlcat'
 collect2: ld returned 1 exit status
 configure:17482: $? = 1
