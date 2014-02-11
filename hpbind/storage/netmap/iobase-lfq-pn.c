@@ -49,14 +49,15 @@ typedef struct __netmap_pipeline_t__ {
 
 typedef struct __netmap_io_manager_t__ 
 {
-    NM_BOOL stopped;
+    volatile NM_BOOL stopped;
     pthread_t run_pid;
+    pthread_t send_pid;
     int epoll_fd;
 
     slock_t mgtlock;
     slock_t iolock;
 
-    int avail;
+    volatile int avail;
     netmap_ifnode_t ifnodes[MAX_INTERFACE_NUMS];
     
     // from pipe fd to netmap (dup) fd
@@ -913,16 +914,19 @@ void * __netmap_run__(void*args)
         for (index = 0; index < nfd; index ++)
         {
             int ppfd = events[index].data.fd;
-            if ( events[index].events & EPOLLIN 
-                    || events[index].events & EPOLLOUT)
+            if ( (events[index].events & EPOLLIN 
+                    || events[index].events & EPOLLOUT) && !iomgr->stopped )
             {
                 g_fd_interupt_count[ppfd] ++;
                 __netmap_recvfrom__(ppfd);
             }
+
+            if (iomgr->stopped) goto END;
         }
         sleep(0);
     }
 
+END:
     D("exiting");
     free(events);
 
@@ -941,10 +945,14 @@ void *__netmap_flush__(void *args)
             netmap_ifnode_t *node = &(iomgr->ifnodes[index]);
 			if (node->ring.fd >= 0)
 	            __netmap_sendto__(node->ring.fd);
+
+            if (iomgr->stopped) goto END;
         }
         usleep(10);
     }
 
+END:
+    D("exit");
     return NULL;
 }
 
@@ -970,13 +978,8 @@ void netmap_setup(void)
         g_fd_signal_count[index] = -1;
     }
 
-
     pthread_create(&(g_iomgr.run_pid), NULL, __netmap_run__, (void*)(&g_iomgr));
-    pthread_detach(g_iomgr.run_pid);
-
-    pthread_t pid;
-    pthread_create(&pid, NULL, __netmap_flush__, (void*)(&g_iomgr));
-    pthread_detach(pid);
+    pthread_create(&(g_iomgr.send_pid), NULL, __netmap_flush__, (void*)(&g_iomgr));
 	
 	pthread_mutex_unlock(&g_mgtlock);
 }
@@ -1001,6 +1004,9 @@ void netmap_report(void)
 void netmap_teardown(void)
 {
     g_iomgr.stopped = NM_TRUE;
+    
+    pthread_join(g_iomgr.run_pid, NULL);
+    pthread_join(g_iomgr.send_pid, NULL);
 
     netmap_report();
 }

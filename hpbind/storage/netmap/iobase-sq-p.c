@@ -50,14 +50,15 @@ typedef struct __netmap_pipeline_t__ {
 
 typedef struct __netmap_io_manager_t__ 
 {
-    NM_BOOL stopped;
+    volatile NM_BOOL stopped;
     pthread_t run_pid;
+    pthread_t send_pid;
     int epoll_fd;
 
     slock_t mgtlock;
     slock_t iolock;
 
-    int avail;
+    volatile int avail;
     netmap_ifnode_t ifnodes[MAX_INTERFACE_NUMS];
     
     // from pipe fd to netmap (dup) fd
@@ -386,6 +387,8 @@ int netmap_openfd(const char *ifname)
     g_iomgr.ifnode_map[nmfd] = node;
     watch_fd(g_iomgr.epoll_fd, nmfd);
 
+    D("On %s watch fd:%d", node->ifname, node->ring.fd);
+
 CREATE_PIPE_LINE:    
     if (pipe(pipe_fds) < 0 )
     {
@@ -444,11 +447,7 @@ int netmap_closefd(int fd)
     slock_lock(&(g_iomgr.mgtlock));
 
     node = netmap_ifnode_by_pipefd(&g_iomgr, fd);
-    if (NULL == node) 
-    {
-        D("node NULL.fd:%d", fd);
-        goto END_L;
-    }
+    if (NULL == node) goto END_L;
 
     line = netmap_pipeline_by_pipefd(&g_iomgr, fd); 
     if (NULL != line)
@@ -458,10 +457,6 @@ int netmap_closefd(int fd)
 
         g_iomgr.pipeline_map[line->pipe_infd] = NULL;
         netmap_destroy_pipeline(line); 
-    }
-    else 
-    {
-        D("line NULL.");
     }
      
     assert(node->refcount > 0);
@@ -942,16 +937,18 @@ void * __netmap_run__(void*args)
         for (index = 0; index < nfd; index ++)
         {
             int ppfd = events[index].data.fd;
-            if ( events[index].events & EPOLLIN 
-                    || events[index].events & EPOLLOUT)
+            if ( (events[index].events & EPOLLIN 
+                    || events[index].events & EPOLLOUT) && !iomgr->stopped )
             {
                 g_fd_interupt_count[ppfd] ++;
                 __netmap_recvfrom__(ppfd);
             }
+
+            if (iomgr->stopped) goto END;
         }
         sleep(0);
     }
-
+END:
     D("exiting");
     free(events);
 
@@ -978,10 +975,13 @@ void *__netmap_flush__(void *args)
                     n = n->next;
                 }while( n != node->pipelines && !iomgr->stopped);
             }
+
+            if (iomgr->stopped) goto END;
         }
         usleep(10);
     }
 
+END:    
     return NULL;
 }
 
@@ -1007,11 +1007,7 @@ void netmap_setup(void)
     }
 	
     pthread_create(&(g_iomgr.run_pid), NULL, __netmap_run__, (void*)(&g_iomgr));
-    pthread_detach(g_iomgr.run_pid);
-	
-    pthread_t pid;
-    pthread_create(&pid, NULL, __netmap_flush__, (void*)(&g_iomgr));
-    pthread_detach(pid);
+    pthread_create(&(g_iomgr.send_pid), NULL, __netmap_flush__, (void*)(&g_iomgr));
 	
 	pthread_mutex_unlock(&g_mgtlock);
 }
@@ -1036,6 +1032,9 @@ void netmap_report(void)
 void netmap_teardown(void)
 {
     g_iomgr.stopped = NM_TRUE;
+    
+    pthread_join(g_iomgr.run_pid, NULL);
+    pthread_join(g_iomgr.send_pid, NULL);
 
     netmap_report();
 }
