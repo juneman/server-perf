@@ -43,8 +43,9 @@ typedef struct __netmap_pipeline_t__ {
     slist_node_t node;
 
     squeue_t send_queue;
+    squeue_t send_idle_queue;
     squeue_t recv_queue;
-    squeue_t idle_queue;
+    squeue_t recv_idle_queue;
 }netmap_pipeline_t;
 
 typedef struct __netmap_io_manager_t__ 
@@ -54,6 +55,7 @@ typedef struct __netmap_io_manager_t__
     int epoll_fd;
 
     slock_t mgtlock;
+    slock_t iolock;
 
     int avail;
     netmap_ifnode_t ifnodes[MAX_INTERFACE_NUMS];
@@ -120,9 +122,10 @@ static void netmap_init_pipeline(netmap_pipeline_t *line, int capcity)
 
     line->magic = NM_PIPELINE_MAGIC;
     line->pipe_infd = line->pipe_outfd = line->nmfd = -1;
-    squeue_init(&(line->recv_queue), capcity, 0, SQUEUE_MUL_WRITE);
-    squeue_init(&(line->send_queue), capcity, 0, SQUEUE_MUL_READ);
-    squeue_init(&(line->idle_queue), capcity, capcity, SQUEUE_MUL_READ | SQUEUE_MUL_WRITE);
+    squeue_init(&(line->recv_queue), capcity, 0,  SQUEUE_MUL_READ | SQUEUE_SIG_WRITE);
+    squeue_init(&(line->send_queue), capcity, 0, SQUEUE_SIG_READ | SQUEUE_MUL_WRITE);
+    squeue_init(&(line->recv_idle_queue), capcity, capcity, SQUEUE_SIG_READ | SQUEUE_MUL_WRITE);
+    squeue_init(&(line->send_idle_queue), capcity, capcity, SQUEUE_MUL_READ | SQUEUE_MUL_WRITE);
     slist_init(&(line->node));
 }
 
@@ -134,8 +137,10 @@ static void netmap_destroy_pipeline(netmap_pipeline_t *line)
     line->pipe_infd = line->pipe_outfd = line->nmfd = -1;
     squeue_destroy(&(line->recv_queue));
     squeue_destroy(&(line->send_queue));
-    squeue_destroy(&(line->idle_queue));
+    squeue_destroy(&(line->recv_idle_queue));
+    squeue_destroy(&(line->send_idle_queue));
 }
+
 static void netmap_init_ifnode(netmap_ifnode_t *node, int capcity)
 {
     assert(node != NULL);
@@ -200,6 +205,7 @@ static void init_io_manager(netmap_io_manager_t *mgr)
     memset(&(mgr->pipeline_map), 0x0, sizeof(netmap_pipeline_t*) * (MAX_FDS));
 
     slock_init(&(mgr->mgtlock));
+    slock_init(&(mgr->iolock));
 }
 // must locked by mgr mgtlock by caller
 static netmap_ifnode_t * 
@@ -360,7 +366,8 @@ int netmap_openfd(const char *ifname)
 
     strncpy(node->ifname, ifname, NM_IFNAME_SIZE);
     node->ring.ifname = node->ifname;
-    if (NM_R_SUCCESS != (err = netmap_open(&node->ring, 0, 0)))
+    //if (NM_R_SUCCESS != (err = netmap_open(&node->ring, 0, 0)))
+    if (NM_R_SUCCESS != (err = netmap_open(&node->ring, NETMAP_NO_TX_POLL, 0)))
         goto END_L;
     
     if ((nmfd = node->ring.fd) >= MAX_FDS)
@@ -598,6 +605,7 @@ static int process_recv_ring(struct netmap_ring *rxring,
     j = rxring->cur; /* RX */
     if (rxring->avail < limit)
         limit = rxring->avail;
+
     while (m < limit) {
         struct netmap_slot *rs = &rxring->slot[j];
         char *rxbuf = NETMAP_BUF(rxring, rs->buf_idx);
@@ -710,6 +718,7 @@ static int netmap_send_to_ring(struct my_ring *src,
         ret = process_send_ring(txring, buff, data_len, addr);
         if (ret > 0) 
         {
+			netmap_tx_force(src);
             break;
         }
 
@@ -744,7 +753,7 @@ int netmap_recv(int fd, char *buff, int buff_len, netmap_address_t *addr)
     memcpy(buff, data->buff, data->len);
     memcpy(addr, data->extbuff, sizeof(netmap_address_t));
     
-    squeue_push(&(line->idle_queue), data);
+    squeue_push(&(line->recv_idle_queue), data);
 
     return n;
 }
@@ -769,7 +778,7 @@ int netmap_send(int fd, const char *buff, int data_len, const netmap_address_t *
     assert(line != NULL);
     if (line == NULL) return NM_R_FD_OUTOFBOUND;
     
-    sdata_t *data = squeue_pop(&(line->idle_queue));
+    sdata_t *data = squeue_pop(&(line->send_idle_queue));
     if (NULL == data) return NM_R_QUEUE_EMPTY;
     
     data->len = data_len;
@@ -823,7 +832,7 @@ static int __netmap_recvfrom__(int nmfd)
 
 LOOP:
     {
-        data = squeue_pop(&(line->idle_queue));
+        data = squeue_pop_try(&(line->recv_idle_queue));
         if (NULL == data) goto END;
 
         int recv_bytes = netmap_recv_from_ring(&(node->ring), 
@@ -832,6 +841,7 @@ LOOP:
         if (recv_bytes > 0) 
         { 
             data->len = recv_bytes;
+			squeue_pop(&(line->recv_idle_queue));
             squeue_push(&(line->recv_queue),data); 
 
             have_data = NM_R_SUCCESS;
@@ -839,9 +849,7 @@ LOOP:
 
             __netmap_signal__(nmfd);
 			goto LOOP;
-        } else {
-            squeue_push(&(line->idle_queue),data); 
-        }
+        } 
     }
     
 END:
@@ -858,13 +866,17 @@ static int __netmap_sendto__(netmap_ifnode_t *node, netmap_pipeline_t *line)
     sdata_t *data;
 LOOP:
     {
-        data = squeue_pop(&(line->send_queue));
+        data = squeue_pop_try(&(line->send_queue));
         if (NULL == data) goto END;
         assert(data->len > 0);
+
+		//slock_lock(&(g_iomgr.iolock));
         int n = netmap_send_to_ring(&(node->ring), data->buff, data->len, 
                                         (netmap_address_t*)(data->extbuff));
-        
-        squeue_push(&(line->idle_queue), data);
+		//slock_unlock(&(g_iomgr.iolock));
+       	
+        squeue_pop(&(line->send_queue));
+        squeue_push(&(line->send_idle_queue), data);
 		
         if (n > 0 ) {
             node->send_count ++;
@@ -922,7 +934,10 @@ void * __netmap_run__(void*args)
    
     while (!iomgr->stopped) 
     {
+		//slock_lock(&(iomgr->iolock));
         nfd = epoll_wait(iomgr->epoll_fd, events, MAX_FDS, -1);
+		//slock_unlock(&(iomgr->iolock));
+
         if (nfd < 0) continue;
         for (index = 0; index < nfd; index ++)
         {
@@ -958,9 +973,10 @@ void *__netmap_flush__(void *args)
             {
                 do {
                     netmap_pipeline_t *line = slist_entry(n, netmap_pipeline_t, node);
-	                __netmap_sendto__(node, line);
+					__netmap_sendto__(node, line);
+
                     n = n->next;
-                }while( n != node->pipelines);
+                }while( n != node->pipelines && !iomgr->stopped);
             }
         }
         usleep(10);
@@ -968,7 +984,6 @@ void *__netmap_flush__(void *args)
 
     return NULL;
 }
-
 
 void netmap_setup(void)
 {
@@ -990,11 +1005,10 @@ void netmap_setup(void)
         g_fd_interupt_count[index] = -1;
         g_fd_signal_count[index] = -1;
     }
-
-
+	
     pthread_create(&(g_iomgr.run_pid), NULL, __netmap_run__, (void*)(&g_iomgr));
     pthread_detach(g_iomgr.run_pid);
-
+	
     pthread_t pid;
     pthread_create(&pid, NULL, __netmap_flush__, (void*)(&g_iomgr));
     pthread_detach(pid);

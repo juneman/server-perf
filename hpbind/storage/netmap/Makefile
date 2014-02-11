@@ -5,8 +5,7 @@ AR=ar cvr
 RANLIB=ranlib
 TOUCH=touch
 
-
-IOLIB= LFQ
+IOLIB= SQ
 
 CFLAGS += -g -Wall -Werror 
 CFLAGS += -fPIC

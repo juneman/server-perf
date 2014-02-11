@@ -59,12 +59,12 @@ inline int squeue_full(squeue_t *sq)
     return __sync_bool_compare_and_swap(&(sq->size), capcity, capcity);
 }
 
-inline sdata_t * squeue_pop(squeue_t *sq)
+inline sdata_t * squeue_pop_try(squeue_t *sq)
 {
     assert(sq != NULL);
     sdata_t *data = NULL;
-    int needlock = 0;
     
+    int needlock = 0;
     if (sq->unactived == 1)
         return NULL;
 
@@ -72,26 +72,50 @@ inline sdata_t * squeue_pop(squeue_t *sq)
     {
         if (__sync_bool_compare_and_swap(&(sq->size), 0, 0)) return NULL;
     }
-    else
-    {
-        needlock = 1;
-    } 
-
+	else
+	{
+		needlock = 1;
+	}
+	
     if (needlock)
     {
         slock_lock(&(sq->lock));
         if (slist_empty(&(sq->queue))) goto END_L;
     }
-    
-    slist_node_t *node = sq->queue.next;
-    data = slist_entry(node, sdata_t, node);
-    slist_delete(node);
-    
-    __sync_fetch_and_sub(&(sq->size), 1);
+	
+	{
+    	slist_node_t *node = sq->queue.next;
+    	data = slist_entry(node, sdata_t, node);
+	}
 
 END_L: 
 
     if (needlock) slock_unlock(&(sq->lock));
+
+    return data;
+}
+
+inline sdata_t * squeue_pop(squeue_t *sq)
+{
+    assert(sq != NULL);
+    sdata_t *data = NULL;
+    
+	slock_lock(&(sq->lock));
+
+    if (sq->unactived == 1)
+        goto END_L;
+
+	if (squeue_empty(sq)) goto END_L;
+
+	slist_node_t *node = sq->queue.next;
+	data = slist_entry(node, sdata_t, node);
+	slist_delete(node);
+
+	sq->size --;
+
+END_L: 
+
+    slock_unlock(&(sq->lock));
 
     return data;
 }
@@ -101,27 +125,18 @@ inline int squeue_push(squeue_t *sq, sdata_t *data)
     assert(sq != NULL);
     assert(data != NULL);
     
-    int needlock = 0;
+    slock_lock(&(sq->lock)); 
 
     if (sq->unactived == 1)
-        return 0;
+		goto END;
 
-    if (sq->attrs & SQUEUE_SIG_WRITE) 
-    {
-        if (__sync_bool_compare_and_swap(&(sq->size), 0, 0)) 
-            needlock = 1;
-    }
-    else
-    {
-        needlock = 1;
-    }
-    
-    if (needlock) slock_lock(&(sq->lock)); 
-        
+	//if (squeue_full(sq)) goto END;	
+
     slist_add_tail(&(sq->queue), &(data->node));
-    __sync_fetch_and_add(&(sq->size), 1);
+    sq->size++;
 
-    if (needlock) slock_unlock(&(sq->lock));
+END:
+    slock_unlock(&(sq->lock));
 
     return 0;
 }

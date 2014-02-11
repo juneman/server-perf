@@ -30,6 +30,7 @@ typedef struct __squeue_t__
 }squeue_t;
 
 inline int squeue_init(squeue_t *sq, int capcity, int size, int attrs);
+inline sdata_t * squeue_pop_try(squeue_t *sq);
 inline sdata_t * squeue_pop(squeue_t *sq);
 inline int squeue_push(squeue_t *sq, sdata_t *data);
 

@@ -54,6 +54,7 @@ typedef struct __netmap_io_manager_t__
     int epoll_fd;
 
     slock_t mgtlock;
+    slock_t iolock;
 
     int avail;
     netmap_ifnode_t ifnodes[MAX_INTERFACE_NUMS];
@@ -200,6 +201,7 @@ static void init_io_manager(netmap_io_manager_t *mgr)
     memset(&(mgr->pipeline_map), 0x0, sizeof(netmap_pipeline_t*) * (MAX_FDS));
 
     slock_init(&(mgr->mgtlock));
+    slock_init(&(mgr->iolock));
 }
 // must locked by mgr mgtlock by caller
 static netmap_ifnode_t * 
@@ -693,6 +695,7 @@ static int netmap_send_to_ring(struct my_ring *src,
         if (txring->avail == 0) 
         {
             ti++;
+			netmap_tx_force(src);
             continue;
         }   
 
@@ -842,9 +845,11 @@ LOOP:
                     data.buff, SDATA_SIZE_MAX, data.extbuff, sizeof(netmap_address_t));
         if (n <= 0) return NM_R_QUEUE_EMPTY;
         data.len = n;
-
+		
+		slock_lock(&(g_iomgr.iolock));
         n = netmap_send_to_ring(&(node->ring), data.buff, data.len, 
                                         (netmap_address_t*)(data.extbuff));
+		slock_unlock(&(g_iomgr.iolock));
         
 		if (n > 0 ) {
             node->send_count ++;
@@ -901,7 +906,9 @@ void * __netmap_run__(void*args)
    
     while (!iomgr->stopped) 
     {
+		slock_lock(&(iomgr->iolock));
         nfd = epoll_wait(iomgr->epoll_fd, events, MAX_FDS, -1);
+		slock_unlock(&(iomgr->iolock));
         if (nfd < 0) continue;
         for (index = 0; index < nfd; index ++)
         {

@@ -66,4 +66,6 @@ struct my_ring {
 int netmap_open(struct my_ring *me, int ringid, int promisc);
 int netmap_close(struct my_ring *me);
 
+void netmap_tx_force(struct my_ring *ring);
+
 #endif /* _NM_UTIL_H */

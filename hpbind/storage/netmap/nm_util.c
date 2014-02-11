@@ -147,3 +147,12 @@ int netmap_close(struct my_ring *me)
     return NM_R_SUCCESS;
 }
 
+void netmap_tx_force(struct my_ring *ring)
+{
+    struct nmreq req;
+    bzero(&req, sizeof(req));
+    req.nr_version = NETMAP_API;
+    strncpy(req.nr_name, ring->ifname, sizeof(req.nr_name));
+    req.nr_ringid = ring->queueid;
+    ioctl(ring->fd, NIOCTXSYNC, &req);
+}

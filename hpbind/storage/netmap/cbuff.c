@@ -41,10 +41,10 @@ inline int cbuff_read(cbuff_t *buff, char *dest, int blen, char *extbuff, int ex
     
     sdata_t *data = NULL;
     int ret = -1;
-
-    if (cbuff_empty(buff)) return 0;
     
     slock_lock(&(buff->lock));
+	assert(buff != NULL);
+    if (cbuff_empty(buff)) goto END_L;
 
     int readp = buff->readp;
     readp = (readp + 1) % buff->capcity;
@@ -81,9 +81,10 @@ inline int cbuff_write(cbuff_t *buff, const char *src, int len, const char *extb
     assert(len  > 0);
     assert(len  < SDATA_SIZE_MAX);
     
-    if (cbuff_full(buff)) return 0;
 
     slock_lock(&(buff->lock));
+    if (cbuff_full(buff)) goto END_L;
+
     int writep = buff->writep;
     sdata_t *data = cbuff_pos(buff, writep);
     memcpy(data->buff, src, len);
@@ -98,6 +99,8 @@ inline int cbuff_write(cbuff_t *buff, const char *src, int len, const char *extb
     
     writep = (writep + 1) % buff->capcity;
     buff->writep = writep;
+
+END_L:
     slock_unlock(&(buff->lock));
 
     return len;

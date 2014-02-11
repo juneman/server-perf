@@ -165,7 +165,7 @@ void *run(void *arg)
                 set_dns_response(buff);
                 netmap_send(fd, buff, recv_bytes, &addr);
                 send_nums[index] ++; 
-            }while(0);
+            }while(1);
         }
     }
 

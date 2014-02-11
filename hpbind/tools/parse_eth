@@ -1,0 +1,67 @@
+#!/bin/sh
+
+ETH=$1
+
+MAXLINES=38
+PRE_RX_NUM=0
+PRE_DROP_NUM=0
+PRE_TX_NUM=0
+
+TIMES=0
+
+function help()
+{
+    echo " Usage: $0 interface "
+}
+
+function put_title()
+{
+clear
+echo ""
+echo "      Ethernet interface count tool "
+echo "          by db. v1.0.0(2014-02-07)   "
+echo "      Counts on interface: $ETH per second"
+echo ""
+echo " RX/s    TX/s    DROP/s "
+}
+
+if [ "$ETH" == "" ] 
+then
+    help
+    exit
+fi
+
+put_title
+
+while true
+do
+
+PRE_RX_NUM=`ifconfig $ETH | grep 'RX packets' | awk '{print $2}' | awk -F ':' '{print $2}' `
+PRE_DROP_NUM=`ifconfig $ETH | grep 'RX packets' | awk '{print $4}' | awk -F ':' '{print $2}'`
+PRE_TX_NUM=`ifconfig $ETH | grep 'TX packets' | awk '{print $2}' | awk -F ':' '{print $2}'`
+
+	sleep 1
+
+RX_NUM=`ifconfig $ETH | grep 'RX packets' | awk '{print $2}' | awk -F ':' '{print $2}' `
+DROP_NUM=`ifconfig $ETH | grep 'RX packets' | awk '{print $4}' | awk -F ':' '{print $2}'`
+TX_NUM=`ifconfig $ETH | grep 'TX packets' | awk '{print $2}' | awk -F ':' '{print $2}'`
+
+	DIS_RX=$((RX_NUM - PRE_RX_NUM))
+	DIS_TX=$((TX_NUM - PRE_TX_NUM))
+	DIS_DROP=$((DROP_NUM - PRE_DROP_NUM))
+
+	DIS_RX=$((RX_NUM - PRE_RX_NUM))
+	DIS_TX=$((TX_NUM - PRE_TX_NUM))
+	DIS_DROP=$((DROP_NUM - PRE_DROP_NUM))
+
+TIMES=$((TIMES + 1))
+if [ $TIMES -gt $MAXLINES  ]
+then
+TIMES=0
+put_title
+fi
+
+echo "$DIS_RX    $DIS_TX    $DIS_DROP "
+
+done
+
