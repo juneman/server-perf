@@ -26,13 +26,12 @@ typedef struct __squeue_t__
     int capcity;
     int size;
     int attrs;
-    int unactived;
 }squeue_t;
 
 inline int squeue_init(squeue_t *sq, int capcity, int size, int attrs);
-inline sdata_t * squeue_pop_try(squeue_t *sq);
-inline sdata_t * squeue_pop(squeue_t *sq);
-inline int squeue_push(squeue_t *sq, sdata_t *data);
+inline sdata_t * squeue_trydeq(squeue_t *sq);
+inline sdata_t * squeue_deq(squeue_t *sq);
+inline int squeue_enq(squeue_t *sq, sdata_t *data);
 
 inline int squeue_empty(squeue_t *sq);
 inline int squeue_destroy(squeue_t *sq);

@@ -16,7 +16,8 @@
 
 typedef struct __slist_node_t__
 {
-    struct __slist_node_t__ *prev, *next;\
+    struct __slist_node_t__ *prev;
+    struct __slist_node_t__ *next;
 }slist_node_t;
 
 #define slist_init(head) do {(head)->prev = (head)->next = (head);}while(0)
@@ -40,7 +41,6 @@ typedef struct __slist_node_t__
         n = slist_entry(pos->member.next, type, member); \
             &(pos->member) != (head); \
               pos = n, n = slist_entry((n)->member.next, type, member))
-
 
 inline int slist_add(slist_node_t *list, slist_node_t *node);
 inline int slist_add_tail(slist_node_t *list, slist_node_t *node);

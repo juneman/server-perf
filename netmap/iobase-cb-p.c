@@ -20,7 +20,7 @@ static pthread_mutex_t g_mgtlock = PTHREAD_MUTEX_INITIALIZER;
 static int g_nm_inited = 0;
 static int g_nm_setuped = 0;
 
-static unsigned short g_ip_id_next = 0x11;
+static volatile unsigned short g_ip_id_next = 0x11;
 
 typedef struct __netmap_ifnode_t__ {
     struct my_ring ring;
@@ -44,6 +44,7 @@ typedef struct __netmap_pipeline_t__ {
 
     cbuff_t recv_buff;
     cbuff_t send_buff;
+    int actived;
 }netmap_pipeline_t;
 
 typedef struct __netmap_io_manager_t__ 
@@ -127,6 +128,7 @@ static void netmap_init_pipeline(netmap_pipeline_t *line, int capcity)
 
     line->magic = NM_PIPELINE_MAGIC;
     line->pipe_infd = line->pipe_outfd = line->nmfd = -1;
+    line->actived = 0;
 
     cbuff_init(&(line->recv_buff), capcity);
     cbuff_init(&(line->send_buff), capcity);
@@ -136,12 +138,15 @@ static void netmap_init_pipeline(netmap_pipeline_t *line, int capcity)
 static void netmap_destroy_pipeline(netmap_pipeline_t *line)
 {
     assert(line != NULL);
-    assert( NM_PIPELINE_VALID(line->magic));
+    assert(NM_PIPELINE_VALID(line));
 
     line->pipe_infd = line->pipe_outfd = line->nmfd = -1;
+    line->actived = 0;
+
     cbuff_destroy(&(line->recv_buff));
     cbuff_destroy(&(line->send_buff));
 }
+
 static void netmap_init_ifnode(netmap_ifnode_t *node, int capcity)
 {
     assert(node != NULL);
@@ -170,13 +175,13 @@ static void netmap_destroy_ifnode(netmap_ifnode_t *node)
     {
         slist_foreach_entry_safe(line, n, node->pipelines, netmap_pipeline_t, node)
         {
-            assert(NM_PIPELINE_VALID(line->magic));
+            assert(NM_PIPELINE_VALID(line));
             slist_delete(&(line->node));
             free(line);
         }
 
         line = slist_entry(node->pipelines, netmap_pipeline_t, node);
-        assert(NM_PIPELINE_VALID(line->magic));
+        assert(NM_PIPELINE_VALID(line));
         free(line);
     }
     
@@ -250,6 +255,7 @@ netmap_get_available_pipeline(netmap_io_manager_t *mgr)
     if (NULL == line) return NULL;
     
     netmap_init_pipeline(line, NM_QUEUE_CAPCITY);
+
     return line;
 }
 
@@ -270,6 +276,12 @@ static int netmap_ifnode_add_pipeline(netmap_ifnode_t *ifnode, netmap_pipeline_t
 
     return NM_R_SUCCESS;
 }
+
+// TODO: need to code it.
+//static int netmap_ifnode_del_pipeline(netmap_ifnode_t *ifnode, netmap_pipeline_t *line)
+//{
+//
+//}
 
 static netmap_ifnode_t* 
 netmap_ifnode_by_nmfd(netmap_io_manager_t *mgr, int nmfd)
@@ -297,6 +309,9 @@ netmap_ifnode_next_line_by_nmfd(netmap_io_manager_t *mgr, int nmfd)
     if (NULL == node->next_line ) return NULL;
 
     line = slist_entry(node->next_line, netmap_pipeline_t, node);
+    CHECK_PIPELINE_AND_EXIT(line);
+    if (!line->actived) return NULL;
+
     return line;
 }
 
@@ -304,11 +319,16 @@ static int netmap_ifnode_move_to_next(netmap_io_manager_t *mgr, int nmfd)
 {
     assert(nmfd< MAX_FDS);
     netmap_ifnode_t *node = NULL;
-    
+    netmap_pipeline_t *line = NULL;
+
     if (nmfd >= MAX_FDS) return NM_R_FD_OUTOFBOUND;
     node = netmap_ifnode_by_nmfd(mgr, nmfd);
     if (NULL == node) return NM_R_FAILED;
-    
+
+    if (NULL == node->next_line->next) return NM_R_FAILED;
+
+    line = slist_entry(node->next_line->next, netmap_pipeline_t, node);
+    CHECK_PIPELINE_AND_EXIT(line);
     node->next_line = node->next_line->next;
 
     return NM_R_SUCCESS;
@@ -339,7 +359,10 @@ netmap_pipeline_by_pipefd(netmap_io_manager_t *mgr, int pipe_fd)
     {
         line = mgr->pipeline_map[pipe_fd]; 
     }
-
+    
+    if (NULL == line) return NULL;
+    CHECK_PIPELINE_AND_EXIT(line);
+    if (!line->actived) return NULL;
     return line;
 }
 
@@ -367,8 +390,7 @@ int netmap_openfd(const char *ifname)
 
     strncpy(node->ifname, ifname, NM_IFNAME_SIZE);
     node->ring.ifname = node->ifname;
-    //if (NM_R_SUCCESS != (err = netmap_open(&node->ring, 0, 0)))
-    if (NM_R_SUCCESS != (err = netmap_open(&node->ring, NETMAP_NO_TX_POLL, 0)))
+    if (NM_R_SUCCESS != (err = netmap_open(&node->ring, 0, 0)))
         goto END_L;
 
     if ((nmfd = node->ring.fd) >= MAX_FDS)
@@ -416,9 +438,10 @@ CREATE_PIPE_LINE:
     
     node->refcount ++;
     line->nmfd = nmfd;
+    line->actived = 1;
     g_iomgr.pipeline_map[line->pipe_infd] = line;
     netmap_ifnode_add_pipeline(node, line);
-    
+        
     fd = line->pipe_infd;
     goto END_L;
 
@@ -454,7 +477,11 @@ int netmap_closefd(int fd)
     {
         close(line->pipe_infd);
         close(line->pipe_outfd);
-
+// 
+// TODO: Need fix it. by db.
+// need to delete this line form ifnode. 
+// and at __netmap_run__ runtime, need to avoid access this line.
+//
         g_iomgr.pipeline_map[line->pipe_infd] = NULL;
         netmap_destroy_pipeline(line); 
     }
@@ -591,7 +618,7 @@ static int build_pkt_header(char *buff, int len, const netmap_address_t *addr)
 }
 
 static int process_recv_ring(struct netmap_ring *rxring, 
-        sdata_t *data, int limit) 
+       sdata_t *data, int limit) 
 {
     u_int j, m = 0;
     u_int recv_count = 0;
@@ -716,7 +743,6 @@ static int netmap_send_to_ring(struct my_ring *src, sdata_t *data, int limit)
         
         if (process_send_ring(txring, data, limit) > 0)
         {
-			netmap_tx_force(src);
 			ret = NM_R_SUCCESS;
 			break;
 		}
@@ -825,7 +851,8 @@ LOOP:
 	if (cbuff_full(buff)) goto END_L;
 	
 	data = cbuff_writeable_entry(buff);	
-	
+    CHECK_SDATA_AND_EXIT(data);
+
     if ( ( recv_count = netmap_recv_from_ring(&(node->ring), data, g_limit)) > 0)
     { 
 		cbuff_writeable_next(buff);
@@ -865,10 +892,11 @@ LOOP:
 	if (buff != NULL && cbuff_empty(buff)) goto END_L;
 	
     data = cbuff_readable_entry(buff);	
+    CHECK_SDATA_AND_EXIT(data);
 
-	//slock_lock(&(g_iomgr.iolock));
+	slock_lock(&(g_iomgr.iolock));
     ret = netmap_send_to_ring(&(node->ring), data, g_limit);
-	//slock_unlock(&(g_iomgr.iolock));
+	slock_unlock(&(g_iomgr.iolock));
     if (ret == NM_R_SUCCESS )
 	{
 		cbuff_readable_next(buff);
@@ -928,9 +956,10 @@ void * __netmap_run__(void*args)
    
     while (!iomgr->stopped) 
     {
-		//slock_lock(&(iomgr->iolock));
+		slock_lock(&(iomgr->iolock));
         nfd = epoll_wait(iomgr->epoll_fd, events, MAX_FDS, -1);
-		//slock_unlock(&(iomgr->iolock));
+		slock_unlock(&(iomgr->iolock));
+
         if (nfd < 0) continue;
         for (index = 0; index < nfd; index ++)
         {
@@ -964,16 +993,18 @@ void *__netmap_flush__(void *args)
         for (index = 0; index < iomgr->avail; index ++)
         {
             netmap_ifnode_t *node = &(iomgr->ifnodes[index]);
+            if (NULL == node) continue;
 
             slist_node_t *n = node->pipelines;
 			if (node->ring.fd >= 0 && n != NULL)
             {
                 do {
                     netmap_pipeline_t *line = slist_entry(n, netmap_pipeline_t, node);
+                    CHECK_PIPELINE_AND_EXIT(line);
 					__netmap_sendto__(node, line);
 
                     n = n->next;
-                }while( n != node->pipelines && !iomgr->stopped);
+                }while( n != node->pipelines && n != NULL && !iomgr->stopped);
             }
 
             if (iomgr->stopped) goto END;
@@ -1019,6 +1050,8 @@ void netmap_report(void)
     for (index = 0; index < g_iomgr.avail; index ++)
     {
         netmap_ifnode_t *node = &(g_iomgr.ifnodes[index]);
+        if (NULL == node) continue;
+
         printf(" On %s recv:%d, send:%d\n", node->ifname, node->recv_count, node->send_count);
         fflush(stdout);
     }

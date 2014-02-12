@@ -44,7 +44,7 @@ inline int squeue_init(squeue_t *sq, int capcity, int size, int attrs)
     sq->capcity = capcity;
     sq->size = size;
     sq->attrs = attrs;
-    sq->unactived = 0;    
+
     return 0;
 }
 
@@ -59,14 +59,12 @@ inline int squeue_full(squeue_t *sq)
     return __sync_bool_compare_and_swap(&(sq->size), capcity, capcity);
 }
 
-inline sdata_t * squeue_pop_try(squeue_t *sq)
+inline sdata_t * squeue_trydeq(squeue_t *sq)
 {
     assert(sq != NULL);
     sdata_t *data = NULL;
     
     int needlock = 0;
-    if (sq->unactived == 1)
-        return NULL;
 
     if (sq->attrs & SQUEUE_SIG_READ) 
     {
@@ -86,6 +84,7 @@ inline sdata_t * squeue_pop_try(squeue_t *sq)
 	{
     	slist_node_t *node = sq->queue.next;
     	data = slist_entry(node, sdata_t, node);
+        CHECK_SDATA_AND_EXIT(data);
 	}
 
 END_L: 
@@ -95,47 +94,40 @@ END_L:
     return data;
 }
 
-inline sdata_t * squeue_pop(squeue_t *sq)
+inline sdata_t * squeue_deq(squeue_t *sq)
 {
     assert(sq != NULL);
     sdata_t *data = NULL;
     
 	slock_lock(&(sq->lock));
 
-    if (sq->unactived == 1)
-        goto END_L;
-
 	if (squeue_empty(sq)) goto END_L;
 
 	slist_node_t *node = sq->queue.next;
 	data = slist_entry(node, sdata_t, node);
+    CHECK_SDATA_AND_EXIT(data);
 	slist_delete(node);
 
 	sq->size --;
 
 END_L: 
-
     slock_unlock(&(sq->lock));
 
     return data;
 }
 
-inline int squeue_push(squeue_t *sq, sdata_t *data)
+inline int squeue_enq(squeue_t *sq, sdata_t *data)
 {
     assert(sq != NULL);
     assert(data != NULL);
     
+    CHECK_SDATA_AND_EXIT(data);
+
     slock_lock(&(sq->lock)); 
-
-    if (sq->unactived == 1)
-		goto END;
-
-	//if (squeue_full(sq)) goto END;	
 
     slist_add_tail(&(sq->queue), &(data->node));
     sq->size++;
 
-END:
     slock_unlock(&(sq->lock));
 
     return 0;
@@ -148,13 +140,9 @@ inline int squeue_destroy(squeue_t *sq)
     
     slock_lock(&(sq->lock));
 
-    if (sq->unactived == 1)
-        goto END; 
-
-    sq->unactived = 1;
-     
     slist_foreach_entry_safe(data, temp, &(sq->queue), sdata_t, node)
     {
+        CHECK_SDATA_AND_EXIT(data);
         slist_delete(&(data->node));
         free(data);
         __sync_fetch_and_sub(&(sq->size), 1);
@@ -162,10 +150,8 @@ inline int squeue_destroy(squeue_t *sq)
 
     assert(squeue_empty(sq));
      
-END:
     slock_unlock(&(sq->lock));
 
     return 0;
 }
-
 

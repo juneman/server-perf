@@ -15,6 +15,8 @@
 inline int cbuff_init(cbuff_t *buff, int capcity)
 {
     assert(buff != NULL);
+    int index = 0;
+    sdata_t *data = NULL;
 
     buff->capcity = capcity;
     buff->readp = -1;
@@ -25,7 +27,12 @@ inline int cbuff_init(cbuff_t *buff, int capcity)
         buff->__buff__ = (char*)malloc(sizeof(sdata_t) * capcity);
         assert(buff->__buff__ != NULL);
         if (NULL == buff->__buff__) return 1;
-        memset(buff->__buff__, 0x0, sizeof(sdata_t) * capcity);
+
+        for (index = 0; index < capcity; index ++)
+        {
+            data = cbuff_pos(buff, index);
+            sdata_init(data);
+        }
     }
     
     slock_init(&(buff->lock));

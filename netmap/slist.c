@@ -26,7 +26,7 @@ inline int slist_add(slist_node_t *list, slist_node_t *node)
 
 inline int slist_add_tail(slist_node_t *list, slist_node_t *node)
 {
-    return slist_add(list->prev, node);
+    return slist_add((slist_node_t*)list->prev, (slist_node_t*)node);
 }
 
 inline int slist_delete(slist_node_t *node)

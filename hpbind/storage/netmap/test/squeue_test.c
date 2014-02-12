@@ -18,14 +18,14 @@ int testcase_1()
     int e = squeue_empty(&queue);
     EXPECT_T(e);
     
-    sdata_t *tm = squeue_pop(&queue);
+    sdata_t *tm = squeue_deq(&queue);
     EXPECT_T(tm == NULL);
 
-    squeue_push(&queue, &msg);
+    squeue_enq(&queue, &msg);
     e = squeue_empty(&queue);
     EXPECT_T(!e);
     
-    tm = squeue_pop(&queue);
+    tm = squeue_deq(&queue);
     EXPECT_T(tm != NULL);
     EXPECT_T(tm->len == 1);
     EXPECT_T(tm->buff[0] == 'a');

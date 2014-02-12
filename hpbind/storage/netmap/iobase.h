@@ -26,9 +26,19 @@
 #define NM_IFNAME_SIZE (8)
 
 #define NM_PIPELINE_MAGIC ((int)('a' << 24 | 'b' << 16 | 'c' << 8 | 'd'))
-#define NM_PIPELINE_VALID(m)  ( (m) == NM_PIPELINE_MAGIC ? 1:0 )
+#define NM_PIPELINE_VALID(m)  ( (m)->magic == NM_PIPELINE_MAGIC ? 1:0 )
 
+#define CHECK_PIPELINE_AND_EXIT(m) do { \
+        assert(NM_PIPELINE_VALID((m))); \
+        if (NM_PIPELINE_VALID((m)) == 0) { \
+            printf("%s, %s, %d: pipeline broken.\n", \
+                    __FILE__, __FUNCTION__, __LINE__); \
+            fflush(stdout); \
+            exit(1); \
+        }\
+    }while(0)
 
+//--------------------------------------------
 #define NM_PKT_BUFF_SIZE_MAX (SDATA_SIZE_MAX)
 typedef struct __netmap_address_t__ {
     unsigned char local_macaddr[6];

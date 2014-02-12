@@ -41,6 +41,7 @@ typedef struct __netmap_pipeline_t__ {
     int pipe_infd;
     int pipe_outfd;
     int nmfd;
+    int actived;
     
     slist_node_t node;
 
@@ -122,6 +123,8 @@ static void netmap_init_pipeline(netmap_pipeline_t *line, int capcity)
 
     line->magic = NM_PIPELINE_MAGIC;
     line->pipe_infd = line->pipe_outfd = line->nmfd = -1;
+    line->actived = 0;
+
     lfqueue_init(&(line->recv_queue), capcity);
     slist_init(&(line->node));
 }
@@ -130,9 +133,10 @@ static void netmap_destroy_pipeline(netmap_pipeline_t *line)
 {
     assert(line != NULL);
 
-    assert( NM_PIPELINE_VALID(line->magic));
+    assert( NM_PIPELINE_VALID(line));
 
     line->pipe_infd = line->pipe_outfd = line->nmfd = -1;
+    line->actived = 0;
     lfqueue_destroy(&(line->recv_queue));
 }
 static void netmap_init_ifnode(netmap_ifnode_t *node, int capcity)
@@ -166,13 +170,13 @@ static void netmap_destroy_ifnode(netmap_ifnode_t *node)
     {
         slist_foreach_entry_safe(line, n, node->pipelines, netmap_pipeline_t, node)
         {
-            assert(NM_PIPELINE_VALID(line->magic));
+            assert(NM_PIPELINE_VALID(line));
             slist_delete(&(line->node));
             free(line);
         }
 
         line = slist_entry(node->pipelines, netmap_pipeline_t, node);
-        assert(NM_PIPELINE_VALID(line->magic));
+        assert(NM_PIPELINE_VALID(line));
         free(line);
     }
     
@@ -293,6 +297,9 @@ netmap_ifnode_next_line_by_nmfd(netmap_io_manager_t *mgr, int nmfd)
     if (NULL == node->next_line ) return NULL;
 
     line = slist_entry(node->next_line, netmap_pipeline_t, node);
+    CHECK_PIPELINE_AND_EXIT(line);
+    if (!line->actived) return NULL;
+
     return line;
 }
 
@@ -300,11 +307,16 @@ static int netmap_ifnode_move_to_next(netmap_io_manager_t *mgr, int nmfd)
 {
     assert(nmfd< MAX_FDS);
     netmap_ifnode_t *node = NULL;
+    netmap_pipeline_t *line = NULL;
     
     if (nmfd >= MAX_FDS) return NM_R_FD_OUTOFBOUND;
     node = netmap_ifnode_by_nmfd(mgr, nmfd);
     if (NULL == node) return NM_R_FAILED;
     
+    if (NULL == node->next_line->next) return NM_R_FAILED;
+
+    line = slist_entry(node->next_line->next, netmap_pipeline_t, node);
+    CHECK_PIPELINE_AND_EXIT(line);
     node->next_line = node->next_line->next;
 
     return NM_R_SUCCESS;
@@ -335,7 +347,10 @@ netmap_pipeline_by_pipefd(netmap_io_manager_t *mgr, int pipe_fd)
     {
         line = mgr->pipeline_map[pipe_fd]; 
     }
-
+    
+    if (NULL == line) return NULL;
+    CHECK_PIPELINE_AND_EXIT(line);
+    if (!line->actived) return NULL;
     return line;
 }
 
@@ -409,6 +424,7 @@ CREATE_PIPE_LINE:
     
     node->refcount ++;
     line->nmfd = nmfd;
+    line->actived = 1;
     g_iomgr.pipeline_map[line->pipe_infd] = line;
     netmap_ifnode_add_pipeline(node, line);
     
