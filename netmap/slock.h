@@ -39,14 +39,21 @@ typedef struct __scond_t__
     pthread_cond_init(&((cond)->c), NULL); \
     pthread_mutex_init(&((cond)->m), NULL); }while(0)
 
-#define scond_signal(cond) \
-    pthread_cond_signal(&((cond)->c))
+#define scond_signal(cond) do {\
+    pthread_mutex_lock(&((cond)->m)); \
+    pthread_cond_signal(&((cond)->c)); \
+    pthread_mutex_unlock(&((cond)->m)); } while(0)
 
-#define scond_broadcast(cond) \
-    pthread_cond_broadcast(&((cond)->c))
+#define scond_broadcast(cond) do {\
+    pthread_mutex_lock(&((cond)->m)); \
+    pthread_cond_broadcast(&((cond)->c)); \
+    pthread_mutex_unlock(&((cond)->m)); } while(0)
 
-#define scond_wait(cond) \
-    pthread_cond_wait(&((cond)->c), &((cond)->m))
+
+#define scond_wait(cond) do {\
+    pthread_mutex_lock(&((cond)->m)); \
+    pthread_cond_wait(&((cond)->c), &((cond)->m)); \
+    pthread_mutex_unlock(&((cond)->m)); } while(0)
 
 #define scond_destroy(cond) do{ \
     pthread_cond_destroy(&((cond)->c)); \

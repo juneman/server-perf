@@ -5,7 +5,7 @@ AR=ar cvr
 RANLIB=ranlib
 TOUCH=touch
 
-IOLIB= CB 
+IOLIB=LFQ
 
 CFLAGS += -g -Wall -Werror 
 CFLAGS += -fPIC
@@ -31,8 +31,15 @@ ifeq ($(IOLIB), LFQ)
 TARGET_SRC = iobase-lfq-pn.o	
 LIBOBJS += lfqueue.o
 else
+
+ifeq ($(IOLIB), CBEV)
+TARGET_SRC = iobase-cb-p-evf.o	
+LIBOBJS += cbuff.o
+else
 TARGET_SRC = iobase-cb-p.o	
 LIBOBJS += cbuff.o
+endif
+
 endif
 endif
 
