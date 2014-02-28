@@ -24,8 +24,8 @@
 #include <netinet/udp.h>
 #include <pthread.h>	/* pthread_* */
 
-#include "net/netmap.h"
-#include "net/netmap_user.h"
+#include "netmap.h"
+#include "netmap_user.h"
 
 #define ifr_flagshigh  ifr_flags
 #define ifr_curcap     ifr_flags

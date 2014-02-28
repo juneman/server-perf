@@ -3,16 +3,16 @@
 # author: db
 #
 
-PROGS =echo echo_threads echo_threads2
+PROGS =echo echo_threads echo_threads2 echo_threads3
 
 CC=gcc
 CLEANFILES=$(PROGS) *.o
 CFLAGS += -Werror -Wall -g
-CFLAGS += -I../ 
+CFLAGS += -I../ -I../include/ 
 
 LDFLAGS +=  -lpthread 
 
-OBJS = ../libiobase.a 
+OBJS = ./../lib/libiobase.a 
 
 all: prebuild clean $(PROGS)
 
@@ -23,6 +23,9 @@ echo_threads: echo_threads.o $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 echo_threads2: echo_threads2.o $(OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+echo_threads3: echo_threads3.o $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 

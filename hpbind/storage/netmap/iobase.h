@@ -22,7 +22,7 @@
 #define MAX_FDS (1024)
 #define MAX_INTERFACE_NUMS 8
 
-#define NM_QUEUE_CAPCITY (1024)
+#define NM_QUEUE_CAPCITY (1024 * 2)
 #define NM_IFNAME_SIZE (8)
 
 #define NM_PIPELINE_MAGIC ((int)('a' << 24 | 'b' << 16 | 'c' << 8 | 'd'))

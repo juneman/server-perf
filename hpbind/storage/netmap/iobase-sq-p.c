@@ -4,8 +4,12 @@
  * author: db
  *
  */
-#include <unistd.h>
+
+#define _GNU_SOURCE
+
 #include <sys/epoll.h>
+#include <unistd.h>
+#include <sched.h>
 #include "slist.h"
 #include "squeue.h"
 #include "iobase.h"
@@ -842,7 +846,7 @@ static int __netmap_recvfrom__(int nmfd)
 
 LOOP:
     {
-        data = squeue_trydeq(&(line->recv_idle_queue));
+        data = squeue_deq(&(line->recv_idle_queue));
         if (NULL == data) goto END;
         CHECK_SDATA_AND_EXIT(data);
 
@@ -852,7 +856,6 @@ LOOP:
         if (recv_bytes > 0) 
         { 
             data->len = recv_bytes;
-			squeue_deq(&(line->recv_idle_queue));
             squeue_enq(&(line->recv_queue),data); 
 
             have_data = NM_R_SUCCESS;
@@ -860,7 +863,11 @@ LOOP:
 
             __netmap_signal__(nmfd);
 			goto LOOP;
-        } 
+        }
+        else
+        {
+            squeue_enq(&(line->recv_idle_queue), data);
+        }
     }
     
 END:
@@ -877,7 +884,7 @@ static int __netmap_sendto__(netmap_ifnode_t *node, netmap_pipeline_t *line)
     sdata_t *data;
 LOOP:
     {
-        data = squeue_trydeq(&(line->send_queue));
+        data = squeue_deq(&(line->send_queue));
         if (NULL == data) goto END;
         CHECK_SDATA_AND_EXIT(data);
         assert(data->len > 0);
@@ -887,7 +894,6 @@ LOOP:
                                         (netmap_address_t*)(data->extbuff));
 		slock_unlock(&(g_iomgr.iolock));
        	
-        squeue_deq(&(line->send_queue));
         squeue_enq(&(line->send_idle_queue), data);
 		
         if (n > 0 ) {
@@ -936,7 +942,7 @@ void * __netmap_run__(void*args)
     //----------------------------
     assert(iomgr != NULL);
     assert(iomgr->epoll_fd >= 0);
- 
+
     events = calloc(MAX_FDS, sizeof(struct epoll_event));
     if (events == NULL) 
     {

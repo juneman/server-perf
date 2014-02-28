@@ -124,8 +124,6 @@ void *watcher(void *arg)
                 signal_worker(events[i].data.fd);
             }
         }
-        
-        continue;
      }
     
     for (i = 0; i < WORKER_NUM; i++)

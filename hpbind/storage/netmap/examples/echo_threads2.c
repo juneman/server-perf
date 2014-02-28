@@ -5,16 +5,19 @@
  * author: db
  *
  */
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sched.h>
 #include "iobase.h"
 #include "sys/epoll.h"
 #include "pthread.h"
 
 #define MAX_EVENTS 8
-#define WORKER_NUM 4
+#define WORKER_NUM 2
 
 #define RECV_BUFF_LEN 512
 
@@ -64,7 +67,6 @@ static void signal_worker(int fd)
     nm_cond_t *c = &g_conds[fd];
 
     pthread_mutex_lock(&(c->lock));
-    //pthread_cond_broadcast(&(c->cond));
     pthread_cond_signal(&(c->cond));
     pthread_mutex_unlock(&(c->lock));
 }
@@ -85,7 +87,18 @@ void *watcher(void *arg)
 	int nfd, efd, s;
     int wait_link = 2;
     int i = 0;
-   
+  
+#if 0 
+  	cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(3, &mask);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0)
+    {
+        D("%s\n","set thread afinity faild");
+        exit(1);
+    }
+#endif
+
     //----------------------------
 	efd = epoll_create(MAX_EVENTS);
 	if (efd == -1)
@@ -151,6 +164,17 @@ void *run(void *arg)
 
     char buff[RECV_BUFF_LEN]; 
     netmap_address_t addr;
+
+#if 0
+  	cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(3, &mask);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0)
+    {
+        D("%s\n","set thread afinity faild");
+        pthread_exit(&fd);
+    }
+#endif
 
     D("start thread<index:%d><listening fd:%d>", index, fd);
     while(!do_abort_worker)

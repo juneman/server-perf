@@ -997,7 +997,7 @@ void *__netmap_flush__(void *args)
 
             if (iomgr->stopped) goto END;
         }
-        usleep(1);
+        //usleep(1);
     }
 
 END:

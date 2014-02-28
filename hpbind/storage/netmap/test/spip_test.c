@@ -41,13 +41,14 @@ void *run(void*args)
         exit(1);
     }
     
+        printf("epoll ctl add:%d.\n", fd);
     while(1) 
     {
         nfd = epoll_wait(efd, events, MAX_EVENTS, -1);
         if (nfd < 0) continue;
         {
             printf("epoll ...\n");
-          /*  int buf[2];
+            int buf[2];
             int cc = read(fd, buf, sizeof(buf));
             if (cc < 0)
             {
@@ -56,7 +57,6 @@ void *run(void*args)
             }
             
             printf("fd:%d, %d-%d\n", fd, buf[0], buf[1]);
-            */
         }
     }
 }
@@ -64,20 +64,21 @@ void *run(void*args)
 int main(int argc, char *argv[])
 {
     int fds[2];
+    int i = 0;
 
     if (pipe(fds) < 0) 
     {
         printf("pip failed.\n");
         return 0;
     }
-    
+#if 0 
     int flags = fcntl(fds[0], F_GETFL, 0); 
     fcntl(fds[0], F_SETFL, flags | O_NONBLOCK);
 
     flags = fcntl(fds[1], F_GETFL, 0); 
     fcntl(fds[1], F_SETFL, flags | O_NONBLOCK);
 
-    int i = 0;
+#endif
     for (i = 0; i < WORKER_NUMS; i++)
     {
         g_args[i].fd = dup(fds[0]);
@@ -93,8 +94,8 @@ int main(int argc, char *argv[])
     {
         buf[0] = i;
         buf[1] = j;
-        //write(fds[1], buf, sizeof(buf));
-        write(fds[1], buf, 0);
+        write(fds[1], buf, sizeof(buf));
+        //write(fds[1], buf, 0);
         printf("write...\n"); 
         i+=1;
         j+=2;

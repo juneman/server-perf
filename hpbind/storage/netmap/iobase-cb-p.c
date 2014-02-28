@@ -4,6 +4,9 @@
  * author: db
  *
  */
+
+#define _GNU_SOURCE
+
 #include <unistd.h>
 #include <sys/epoll.h>
 #include "slist.h"
@@ -50,6 +53,10 @@ typedef struct __netmap_pipeline_t__ {
 typedef struct __netmap_io_manager_t__ 
 {
     volatile NM_BOOL stopped;
+
+	// OP ADD
+	volatile int _io_sync;
+
     pthread_t run_pid;
     pthread_t send_pid;
     int epoll_fd;
@@ -205,6 +212,7 @@ static void init_io_manager(netmap_io_manager_t *mgr)
     mgr->epoll_fd = -1;
 
     mgr->stopped = NM_FALSE;
+    mgr->_io_sync = 0;
     mgr->avail = 0;
 
     memset(&(mgr->ifnode_map), 0x0, sizeof(netmap_ifnode_t*) * (MAX_FDS));
@@ -391,6 +399,7 @@ int netmap_openfd(const char *ifname)
     strncpy(node->ifname, ifname, NM_IFNAME_SIZE);
     node->ring.ifname = node->ifname;
     if (NM_R_SUCCESS != (err = netmap_open(&node->ring, 0, 0)))
+    //if (NM_R_SUCCESS != (err = netmap_open(&node->ring, NETMAP_NO_TX_POLL, 0)))
         goto END_L;
 
     if ((nmfd = node->ring.fd) >= MAX_FDS)
@@ -532,7 +541,7 @@ static int parse_addr(const char *buff, int len, netmap_address_t *addr)
     {
         char *query = (char *)( ip_buff + sizeof(struct iphdr ) + sizeof(struct udphdr));
         unsigned short qid = ((unsigned short*) query)[0];
-        printf("parse addr : remote addr:%d, local addr:%d, remote port:%d, local port:%d, "
+        printf("parse addr : remote addr:0x%x, local addr:0x%x, remote port:%d, local port:%d, "
                 " remote mac:-%x-%x-%x, local mac:-%x-%x-%x, "
                 "qid:0x%x\n",
                 (unsigned int )addr->remote_addr, 
@@ -573,15 +582,15 @@ static int build_pkt_header(char *buff, int len, const netmap_address_t *addr)
         unsigned short qid = ((unsigned short*) query)[0];
         printf("build local mac:%x-%x-%x-%x-%x-%x," 
                 "remote mac:%x-%x-%x-%x-%x-%x,"
-                "local addr:%d,remote addr:%d, "
-                "local port:%d, remote port:%d, qid:0x%x\n",
+                "local addr:0x%x,remote addr:0x%x, "
+                "local port:%d(0x%x), remote port:%d, qid:0x%x\n",
                 eh->h_source[0],eh->h_source[1],eh->h_source[2],
                 eh->h_source[3],eh->h_source[4],eh->h_source[5],
                 eh->h_dest[0],eh->h_dest[1],eh->h_dest[2],
                 eh->h_dest[3],eh->h_dest[4],eh->h_dest[5],
                 (unsigned int )addr->local_addr,
                 (unsigned int )addr->remote_addr,
-                htons(addr->local_port), 
+                htons(addr->local_port), addr->local_port, 
                 htons(addr->remote_port), 
                 qid);
     }
@@ -605,7 +614,9 @@ static int build_pkt_header(char *buff, int len, const netmap_address_t *addr)
     udp->dest = addr->remote_port;
     udp->source = addr->local_port;
     udp->check = 0;
-    udp->check = wrapsum(checksum(udp, sizeof(struct udphdr),
+    /*
+ 	*  OP del
+ 	* udp->check = wrapsum(checksum(udp, sizeof(struct udphdr),
                 checksum(query,
                     len - PROTO_LEN,
                     checksum(&ip->saddr, 2 * sizeof(ip->saddr),
@@ -613,7 +624,7 @@ static int build_pkt_header(char *buff, int len, const netmap_address_t *addr)
                         )
                     )
                 ));
-
+	*/
     return NM_R_SUCCESS;
 }
 
@@ -763,8 +774,8 @@ int netmap_recv(int fd, char *buff, int buff_len, netmap_address_t *addr)
     assert(line != NULL);
     if (line == NULL) return NM_R_FD_OUTOFBOUND;
     
-    char buf[1];
-    read(line->pipe_infd, buf, sizeof(buf));
+ //   char buf[1];
+ //   read(line->pipe_infd, buf, sizeof(buf));
 
     int n = cbuff_read(&(line->recv_buff), buff, buff_len, (char*)addr, sizeof(netmap_address_t));
     if (n <= 0) 
@@ -845,9 +856,9 @@ static int __netmap_recvfrom__(int nmfd)
 
 	sdata_t *data = NULL;
 	cbuff_t *buff = &(line->recv_buff);
-
+	
 LOOP:
-	slock_lock(&(buff->lock));
+//	slock_lock(&(buff->lock));
 	if (cbuff_full(buff)) goto END_L;
 	
 	data = cbuff_writeable_entry(buff);	
@@ -856,7 +867,7 @@ LOOP:
     if ( ( recv_count = netmap_recv_from_ring(&(node->ring), data, g_limit)) > 0)
     { 
 		cbuff_writeable_next(buff);
-		slock_unlock(&(buff->lock));
+//		slock_unlock(&(buff->lock));
         __netmap_signal__(nmfd);
 		
 		total_count += recv_count;
@@ -870,7 +881,7 @@ END_L:
 	    netmap_ifnode_move_to_next(&g_iomgr, nmfd);
 	}
 
-	slock_unlock(&(buff->lock));
+//	slock_unlock(&(buff->lock));
     return NM_R_SUCCESS;
 }
 
@@ -884,8 +895,8 @@ static int __netmap_sendto__(netmap_ifnode_t *node, netmap_pipeline_t *line)
 	
 	int ret = NM_R_FAILED;	
 
-	if (slock_trylock(&(buff->lock)) == EBUSY)
-		return NM_R_FAILED;
+//	if (slock_trylock(&(buff->lock)) == EBUSY)
+//		return NM_R_FAILED;
 
 LOOP:
 	assert(buff != NULL);
@@ -894,9 +905,12 @@ LOOP:
     data = cbuff_readable_entry(buff);	
     CHECK_SDATA_AND_EXIT(data);
 
-	slock_lock(&(g_iomgr.iolock));
+	//slock_lock(&(g_iomgr.iolock));
+	
+	while(!__sync_bool_compare_and_swap(&(g_iomgr._io_sync), 0, 1)){}
     ret = netmap_send_to_ring(&(node->ring), data, g_limit);
-	slock_unlock(&(g_iomgr.iolock));
+	__sync_bool_compare_and_swap(&(g_iomgr._io_sync), 1, 0);
+	//slock_unlock(&(g_iomgr.iolock));
     if (ret == NM_R_SUCCESS )
 	{
 		cbuff_readable_next(buff);
@@ -904,13 +918,14 @@ LOOP:
 	}
 	
 END_L:
-	slock_unlock(&(buff->lock));
+//	slock_unlock(&(buff->lock));
     return NM_R_SUCCESS;
 }
 
 static int g_fd_interupt_count[MAX_FDS];
 static int g_fd_signal_count[MAX_FDS];
 
+#if 1
 static int __netmap_signal__(int nmfd)
 {
 	assert(nmfd >= 0);
@@ -934,7 +949,7 @@ static int __netmap_signal__(int nmfd)
 
     return NM_R_FAILED;
 }
-
+#endif
 void * __netmap_run__(void*args)
 {
 	int nfd = 0;
@@ -946,7 +961,7 @@ void * __netmap_run__(void*args)
     //----------------------------
     assert(iomgr != NULL);
     assert(iomgr->epoll_fd >= 0);
- 
+
     events = calloc(MAX_FDS, sizeof(struct epoll_event));
     if (events == NULL) 
     {
@@ -956,9 +971,12 @@ void * __netmap_run__(void*args)
    
     while (!iomgr->stopped) 
     {
-		slock_lock(&(iomgr->iolock));
-        nfd = epoll_wait(iomgr->epoll_fd, events, MAX_FDS, -1);
-		slock_unlock(&(iomgr->iolock));
+//		slock_lock(&(iomgr->iolock));
+		
+		while(!__sync_bool_compare_and_swap(&(iomgr->_io_sync), 0, 1)){}
+	    nfd = epoll_wait(iomgr->epoll_fd, events, MAX_FDS, -1);
+		__sync_bool_compare_and_swap(&(iomgr->_io_sync), 1, 0);
+//		slock_unlock(&(iomgr->iolock));
 
         if (nfd < 0) continue;
         for (index = 0; index < nfd; index ++)
@@ -973,7 +991,7 @@ void * __netmap_run__(void*args)
 
             if (iomgr->stopped) goto END;
         }
-        sleep(0);
+       	sleep(0);
     }
 
 END:
@@ -1009,7 +1027,7 @@ void *__netmap_flush__(void *args)
 
             if (iomgr->stopped) goto END;
         }
-        usleep(1);
+      //  usleep(5);
     }
 
 END:
@@ -1042,6 +1060,8 @@ void netmap_setup(void)
     pthread_create(&(g_iomgr.send_pid), NULL, __netmap_flush__, (void*)(&g_iomgr));
 	
 	pthread_mutex_unlock(&g_mgtlock);
+
+//	__netmap_flush__((void*)&g_iomgr);
 }
 
 void netmap_report(void)
