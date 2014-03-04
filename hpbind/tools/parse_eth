@@ -1,8 +1,23 @@
 #!/bin/sh
 
-ETH=$1
+# 
+# Log:
+# v1.0.0 2014-02-07 db
+#        init version, complement all features.
+#
+# v1.0.1 2014=02-13 db
+#        change title layout       
+#
+#
 
-MAXLINES=38
+ETH=$1
+MAXLINES=$2
+
+if [ "$2" == "" ]
+then
+MAXLINES=40
+fi
+
 PRE_RX_NUM=0
 PRE_DROP_NUM=0
 PRE_TX_NUM=0
@@ -11,7 +26,7 @@ TIMES=0
 
 function help()
 {
-    echo " Usage: $0 interface "
+    echo " Usage: $0 interface [max screen line]"
 }
 
 function put_title()
@@ -19,10 +34,10 @@ function put_title()
 clear
 echo ""
 echo "      Ethernet interface count tool "
-echo "          by db. v1.0.0(2014-02-07)   "
+echo "          by db. v1.0.1(2014-02-13)   "
 echo "      Counts on interface: $ETH per second"
 echo ""
-echo " RX/s    TX/s    DROP/s "
+echo "RX/s      TX/s      DROP/s "
 }
 
 if [ "$ETH" == "" ] 

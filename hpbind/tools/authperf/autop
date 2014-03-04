@@ -1,0 +1,35 @@
+#!/bin/sh
+
+S_ADDR=192.168.56.101
+D_ADDR=192.168.56.221
+
+DURATION=30
+WAIT=1
+CC=400
+
+arp -s 192.168.56.221 08:00:27:f5:2e:9f
+
+sleep 1
+dnsperf -d zone.data -s $D_ADDR -a $S_ADDR -q $CC -l $DURATION 2>&1 1>log &
+
+exp=0
+
+while true
+do
+	clear
+	echo ""
+	echo ""
+	echo "				 Dnsperf Log viwer"
+	echo "				 by db.v1.0.0(2013-12-12)"
+	echo ""
+	echo " $exp / $DURATION "
+	tail -n 30 ./log
+	sleep $WAIT
+	
+	if [ $exp -lt $DURATION ] 
+	then
+		exp=$((exp + $WAIT))
+	fi
+		
+done 
+
